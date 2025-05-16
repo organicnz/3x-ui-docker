@@ -77,21 +77,14 @@ SCOPE=$(determine_scope)
 # Format the commit message
 COMMIT_MESSAGE="${TYPE}(${SCOPE}): ${DESCRIPTION}"
 
-# Show the commit message and confirm
+# Show the commit message and proceed automatically
 echo -e "\nCommit message: $COMMIT_MESSAGE"
-echo -e "Do you want to proceed? (y/n)"
-read CONFIRM
+echo -e "Proceeding with commit automatically..."
 
-if [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ]; then
-  # Perform commit
-  git commit -m "$COMMIT_MESSAGE"
-  
-  # Push changes
-  git push --set-upstream origin main
-  
-  echo -e "\n✅ Changes committed and pushed successfully!"
-else
-  echo -e "\n❌ Commit canceled."
-  # Unstage files
-  git reset
-fi 
+# Perform commit
+git commit -m "$COMMIT_MESSAGE"
+
+# Push changes
+git push --set-upstream origin main
+
+echo -e "\n✅ Changes committed and pushed successfully!" 

@@ -192,7 +192,8 @@ npm run commit "add dark mode toggle" "Feat"
 The script automatically:
 - Formats the commit message according to our standards
 - Determines the appropriate scope based on modified files
-- Handles add, commit, and push operations in one command
+- Stages all changes in the working directory
+- Commits and pushes the changes to the main branch **without asking for confirmation**
 
 #### Commit Format
 
@@ -224,6 +225,12 @@ Where:
 
 #### Using the Auto-commit Tool
 
+The commit script automatically:
+- Formats the commit message according to our standards
+- Determines the appropriate scope based on modified files
+- Stages all changes in the working directory
+- Commits and pushes the changes to the main branch **without asking for confirmation**
+
 ##### Interactive Mode
 If you don't provide arguments, the script will prompt you for information:
 
@@ -235,7 +242,7 @@ This will:
 1. Show you a list of valid commit types
 2. Ask for your commit message
 3. Ask you to select a commit type
-4. Confirm the formatted commit message before proceeding
+4. Automatically commit and push the changes
 
 ##### Direct Mode
 For quicker commits, provide the message and type directly:
