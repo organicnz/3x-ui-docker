@@ -213,6 +213,11 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       
+      - name: 🔗 Test SSH connection to VPS
+        run: |
+          echo "Testing SSH connection to ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}..."
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '✅ SSH connection successful'" || (echo '❌ SSH connection failed' && exit 1)
+      
       - name: 📥 Pull changes on server
         id: pull_changes
         run: |
