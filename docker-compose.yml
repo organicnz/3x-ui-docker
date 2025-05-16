@@ -7,11 +7,11 @@ services:
     container_name: 3x-ui
     restart: unless-stopped
     ports:
-      - "54321:54321"  # Admin panel
-      - "443:443"      # HTTPS
-      - "2053:2053"    # VPN panel custom port
+      - 54321:54321  # Admin panel
+      - 443:443      # HTTPS
+      - 2053:2053    # VPN panel custom port
       # Add any other ports your VPN protocols require
-      # - "port:port"
+      # - port:port
     volumes:
       # Mount the local x-ui.db file for persistence
       - ./x-ui.db:/etc/x-ui/x-ui.db
@@ -24,7 +24,7 @@ services:
       - PANEL_PATH=BXv8SI7gBe     # Set custom panel path
       # Add any other environment variables needed
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:54321/login"]
+      test: [CMD, curl, -f, http://localhost:54321/login]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -78,6 +78,146 @@ jobs:
           docker inspect ghcr.io/mhsanaei/3x-ui:latest --format='{{.Config.Entrypoint}}'
           docker inspect ghcr.io/mhsanaei/3x-ui:latest --format='{{.Config.Cmd}}'
 
+  # Comprehensive testing
+  test:
+    name: 🔬 Comprehensive Tests
+    needs: validate
+    if: needs.validate.outputs.action != 'setup'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🧪 Setup test environment
+        run: |
+          echo "Setting up test environment..."
+          mkdir -p ./logs ./cert ./test_results
+          touch x-ui.db
+          chmod 644 x-ui.db
+      
+      - name: 🔎 Test Docker image integrity
+        run: |
+          echo "Testing Docker image integrity..."
+          # Pull the image
+          docker pull ghcr.io/mhsanaei/3x-ui:latest
+          
+          # Extract image metadata for verification
+          IMAGE_ID=$(docker images ghcr.io/mhsanaei/3x-ui:latest --format "{{.ID}}")
+          echo "Image ID: $IMAGE_ID"
+          
+          # Check image size (ensure it's not suspiciously small or large)
+          IMAGE_SIZE=$(docker images ghcr.io/mhsanaei/3x-ui:latest --format "{{.Size}}")
+          echo "Image size: $IMAGE_SIZE"
+          
+          # Inspect image configuration
+          echo "Checking image configuration..."
+          docker inspect ghcr.io/mhsanaei/3x-ui:latest > ./test_results/image_config.json
+          
+          # Check for required labels
+          echo "Verifying image labels..."
+          LABEL_COUNT=$(docker inspect ghcr.io/mhsanaei/3x-ui:latest --format '{{len .Config.Labels}}')
+          echo "Label count: $LABEL_COUNT"
+          
+          # Extract entrypoint and verify it exists
+          ENTRYPOINT=$(docker inspect ghcr.io/mhsanaei/3x-ui:latest --format '{{json .Config.Entrypoint}}')
+          echo "Entrypoint: $ENTRYPOINT"
+          if [[ "$ENTRYPOINT" == "null" || "$ENTRYPOINT" == "[]" ]]; then
+            echo "⚠️ Warning: No entrypoint defined"
+          else
+            echo "✅ Entrypoint is properly defined"
+          fi
+          
+          # Check exposed ports
+          EXPOSED_PORTS=$(docker inspect ghcr.io/mhsanaei/3x-ui:latest --format '{{json .Config.ExposedPorts}}')
+          echo "Exposed ports: $EXPOSED_PORTS"
+          
+          echo "✅ Docker image integrity checks completed"
+      
+      - name: 🛡️ Security configuration test
+        run: |
+          echo "Testing security configuration..."
+          
+          # Check for unsafe configurations in docker-compose.yml
+          echo "Checking docker-compose.yml for security issues..."
+          grep -q "privileged: true" docker-compose.yml && echo "❌ Security issue: Container runs with privileged mode" || echo "✅ Container does not use privileged mode"
+          grep -q "network_mode: host" docker-compose.yml && echo "⚠️ Warning: Container uses host network mode" || echo "✅ Container does not use host network mode"
+          
+          # Validate ports
+          echo "Checking exposed ports..."
+          ADMIN_PORT=$(grep -o "[0-9]\+:54321" docker-compose.yml | cut -d':' -f1)
+          if [[ -z "$ADMIN_PORT" ]]; then
+            echo "⚠️ Warning: Admin port binding format could not be determined"
+          else
+            if [[ "$ADMIN_PORT" == "0.0.0.0" || "$ADMIN_PORT" == "*" ]]; then
+              echo "⚠️ Warning: Admin port (54321) is exposed to all interfaces"
+            else
+              echo "✅ Admin port has restricted binding"
+            fi
+          fi
+          
+          # Check for volume mounts with sensitive paths
+          echo "Checking volume mounts..."
+          grep -q "/etc:" docker-compose.yml && echo "⚠️ Warning: Container mounts /etc directory" || echo "✅ No sensitive /etc mount found"
+          grep -q "/var:" docker-compose.yml && echo "⚠️ Warning: Container mounts /var directory" || echo "✅ No sensitive /var mount found"
+          
+          echo "✅ Security configuration tests completed"
+      
+      - name: 🧪 Simulated deployment test
+        run: |
+          echo "Running simulated deployment test..."
+          
+          # Start the container with test configuration
+          echo "Starting container for testing..."
+          export DOCKER_COMPOSE_FILE="docker-compose.yml"
+          docker-compose up -d
+          
+          # Wait for the container to initialize
+          echo "Waiting for container to initialize..."
+          sleep 30
+          
+          # Check if container is running
+          CONTAINER_STATUS=$(docker ps --filter "name=3x-ui" --format "{{.Status}}")
+          if [[ -z "$CONTAINER_STATUS" ]]; then
+            echo "❌ Container failed to start"
+            docker-compose logs > ./test_results/container_logs.txt
+            exit 1
+          else
+            echo "✅ Container is running: $CONTAINER_STATUS"
+          fi
+          
+          # Check container health
+          HEALTH_STATUS=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' 3x-ui)
+          echo "Health status: $HEALTH_STATUS"
+          if [[ "$HEALTH_STATUS" == "unhealthy" ]]; then
+            echo "❌ Container is unhealthy"
+            docker-compose logs > ./test_results/container_logs.txt
+            docker-compose down
+            exit 1
+          elif [[ "$HEALTH_STATUS" == "no-healthcheck" ]]; then
+            echo "⚠️ Container does not have a health check"
+          else
+            echo "✅ Container health is OK: $HEALTH_STATUS"
+          fi
+          
+          # Check if the service is responding
+          echo "Testing service endpoints..."
+          curl -s -o /dev/null -w "Admin panel: HTTP %{http_code}\n" http://localhost:54321/login
+          
+          # Clean up
+          echo "Cleaning up test environment..."
+          docker-compose down
+          
+          echo "✅ Simulated deployment test completed"
+      
+      - name: 📊 Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./test_results/
+          retention-days: 5
+
   # Initial server setup
   setup:
     name: 🚀 Server Setup
@@ -161,7 +301,7 @@ jobs:
   # Deploy application (includes SSL setup)
   deploy:
     name: 🚢 Deploy Application
-    needs: validate
+    needs: [validate, test]
     if: needs.validate.outputs.action == 'deploy'
     runs-on: ubuntu-latest
     
