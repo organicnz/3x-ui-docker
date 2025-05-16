@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "description": "3x-ui VPN Service Management",
   "scripts": {
-    "commit": "bash ./scripts/commit.sh"
+    "commit": "bash ./scripts/commit.sh",
+    "auto-commit": "bash ./scripts/auto-commit.sh",
+    "logs": "bash ./scripts/workflow-logs.sh",
+    "logs:status": "bash ./scripts/workflow-logs.sh status",
+    "logs:list": "bash ./scripts/workflow-logs.sh list",
+    "logs:fetch": "bash ./scripts/workflow-logs.sh fetch"
   },
   "repository": {
     "type": "git",
