@@ -27,7 +27,6 @@ logs/
 
 # Environment variables
 .env
-.env.*
 
 # Docker volumes
 volumes/
