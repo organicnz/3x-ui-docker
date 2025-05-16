@@ -109,6 +109,9 @@ jobs:
           # Check for HTTPS port mapping (port 443)
           grep -q "443:443" docker-compose.yml && echo "✅ HTTPS port (443) configured correctly" || (echo "⚠️ HTTPS port (443) might not be configured" && exit 1)
           
+          # Check for VPN panel port mapping (port 2053)
+          grep -q "2053:2053" docker-compose.yml && echo "✅ VPN Panel port (2053) configured correctly" || (echo "⚠️ VPN Panel port (2053) might not be configured" && exit 1)
+      
       - name: 🧰 Test Docker image
         run: |
           echo "Testing Docker image pull..."
@@ -281,7 +284,7 @@ jobs:
   # Deploy SSL certificates with Let's Encrypt (if needed)
   setup_ssl:
     name: 🔒 Setup SSL Certificate
-    needs: [validate]
+    needs: [validate, select_workflow]
     runs-on: ubuntu-latest
     environment: ${{ needs.select_workflow.outputs.environment }}
     steps:
@@ -350,7 +353,7 @@ jobs:
   # Deployment workflow
   deploy:
     name: 🚢 Deploy 3x-ui
-    needs: [validate, setup_ssl]
+    needs: [validate, setup_ssl, select_workflow]
     if: always() && needs.validate.result == 'success' && needs.setup_ssl.result == 'success'
     runs-on: ubuntu-latest
     environment: ${{ needs.select_workflow.outputs.environment }}
@@ -441,7 +444,7 @@ jobs:
   # Verification job
   verify:
     name: ✅ Verify Deployment
-    needs: deploy
+    needs: [deploy, select_workflow]
     runs-on: ubuntu-latest
     environment: ${{ needs.select_workflow.outputs.environment }}
     
@@ -500,6 +503,10 @@ jobs:
             # Check if domain is accessible
             echo "Checking if domain ${DOMAIN} is accessible:" >> $VERIFY_LOG
             curl -s -o /dev/null -w "%{http_code}" -k https://${DOMAIN} >> $VERIFY_LOG 2>&1 || echo "Failed to connect to domain" >> $VERIFY_LOG
+            
+            # Check if VPN panel URL is accessible
+            echo "Checking if VPN panel URL is accessible:" >> $VERIFY_LOG
+            curl -s -o /dev/null -w "%{http_code}" -k https://${DOMAIN}:2053/BXv8SI7gBe/ >> $VERIFY_LOG 2>&1 || echo "Failed to connect to VPN panel" >> $VERIFY_LOG
             
             # Output verification summary
             echo "Verification completed at $(date)" >> $VERIFY_LOG
