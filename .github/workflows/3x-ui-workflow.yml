@@ -381,7 +381,7 @@ jobs:
         id: pull_changes
         run: |
           echo "Pulling latest changes on server..."
-          ssh -i ${{ secrets.SSH_PRIVATE_KEY }} -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "cd ${{ secrets.DEPLOY_PATH }} && git pull origin main"
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "cd ${{ secrets.DEPLOY_PATH }} && git pull origin main"
       
       - name: 🚀 Deploy VPN service
         id: deploy
