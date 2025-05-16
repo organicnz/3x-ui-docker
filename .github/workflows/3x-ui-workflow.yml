@@ -1,4 +1,4 @@
-name: 3x-ui VPN Simple Deployment
+name: 3x-ui VPN Deployment
 
 on:
   push:
@@ -20,14 +20,17 @@ env:
   DOCKER_COMPOSE_VERSION: v2.24.6
 
 jobs:
-  deploy:
-    name: 🚀 Deploy 3x-ui VPN
+  validate:
+    name: 🔍 Validate Configuration
     runs-on: ubuntu-latest
+    outputs:
+      validation_status: ${{ steps.validate_compose.outputs.status }}
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
-      
+        
       - name: 🧰 Install Docker Compose
+        id: install_compose
         run: |
           echo "Installing Docker Compose version ${DOCKER_COMPOSE_VERSION}..."
           DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
@@ -37,10 +40,12 @@ jobs:
           docker compose version
       
       - name: 🧰 Validate Docker Compose
+        id: validate_compose
         run: |
-          echo "Step 1/7: Validating Docker Compose file..."
+          echo "Validating Docker Compose file..."
           if [ ! -f docker-compose.yml ]; then
             echo "ERROR: docker-compose.yml not found!"
+            echo "status=failed" >> $GITHUB_OUTPUT
             exit 1
           fi
           
@@ -51,13 +56,22 @@ jobs:
           grep -q "3x-ui:" docker-compose.yml && echo "✅ 3x-ui service found"
           grep -q "443:443" docker-compose.yml && echo "✅ HTTPS port (443) configured"
           grep -q "2053:2053" docker-compose.yml && echo "✅ VPN Panel port (2053) configured"
+          
+          echo "status=success" >> $GITHUB_OUTPUT
       
       - name: 🔎 Test Docker image
         run: |
-          echo "Step 2/7: Testing Docker image pull..."
+          echo "Testing Docker image pull..."
           docker pull ghcr.io/mhsanaei/3x-ui:latest
           echo "✅ Docker image pulled successfully"
-      
+
+  setup:
+    name: 🔧 Setup Connection
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      connection_status: ${{ steps.verify_connection.outputs.status }}
+    steps:
       - name: 🔑 Setup SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
@@ -65,23 +79,50 @@ jobs:
       
       - name: 🔐 Add known hosts
         run: |
-          echo "Step 3/7: Setting up SSH access..."
+          echo "Setting up SSH access..."
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
           echo "✅ SSH configuration completed"
       
       - name: 🔗 Verify SSH connection
+        id: verify_connection
         run: |
-          echo "Step 4/7: Testing SSH connection..."
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '✅ SSH connection successful'"
+          echo "Testing SSH connection..."
+          if ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '✅ SSH connection successful'"; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+  deploy:
+    name: 🚀 Deploy Application
+    needs: setup
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_log: ${{ steps.deployment.outputs.log_file }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 🔑 Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: 🔒 Setup & Deploy
+      - name: 🔐 Add known hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          
+      - name: 🔒 Execute Deployment
+        id: deployment
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           script: |
-            echo "Step 5/7: Starting deployment process..."
+            echo "Starting deployment process..."
             
             # Create directory structure if not exists
             echo "Creating deployment directories..."
@@ -170,14 +211,34 @@ jobs:
             echo "Deployment completed at $(date)" >> $DEPLOY_LOG
             ln -sf $DEPLOY_LOG "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_deploy.log"
             echo "✅ Deployment process completed"
+            echo "log_file=${DEPLOY_LOG}" >> $GITHUB_OUTPUT
+
+  verify:
+    name: ✅ Verify Deployment
+    needs: deploy
+    runs-on: ubuntu-latest
+    outputs:
+      verification_status: ${{ steps.service_check.outputs.status }}
+      verify_log: ${{ steps.service_check.outputs.log_file }}
+    steps:
+      - name: 🔑 Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: ✅ Verify Service
+      - name: 🔐 Add known hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          
+      - name: ✅ Check Service Health
+        id: service_check
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           script: |
-            echo "Step 6/7: Verifying service health..."
+            echo "Verifying service health..."
             cd ${{ secrets.DEPLOY_PATH }}
             
             # Create a timestamp for logs
@@ -211,13 +272,21 @@ jobs:
             
             if [[ -n "$CONTAINER_STATUS" ]]; then
               echo "✅ Service verification passed. Container is running."
+              echo "status=success" >> $GITHUB_OUTPUT
             else
               echo "❌ Service verification failed. Container is not running."
+              echo "status=failed" >> $GITHUB_OUTPUT
               exit 1
             fi
-      
+            echo "log_file=${VERIFY_LOG}" >> $GITHUB_OUTPUT
+
+  logs:
+    name: 📊 Collect Logs
+    needs: [deploy, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
       - name: 📥 Download Logs
-        if: always()
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -227,16 +296,68 @@ jobs:
           strip_components: 2
       
       - name: 📦 Archive logs
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: deployment-logs
           path: ./workflow_logs/
           retention-days: 7
           
-      - name: 🎉 Deployment Summary
+  summary:
+    name: 🎉 Deployment Summary
+    needs: [validate, setup, deploy, verify, logs]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📝 Generate Summary
         run: |
-          echo "Step 7/7: Deployment completed"
-          echo "✅ 3x-ui VPN has been deployed successfully"
+          echo "# 3x-ui VPN Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Validation Status
+          if [[ "${{ needs.validate.outputs.validation_status }}" == "success" ]]; then
+            echo "✅ **Configuration Validation**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Configuration Validation**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Connection Status
+          if [[ "${{ needs.setup.outputs.connection_status }}" == "success" ]]; then
+            echo "✅ **SSH Connection**: Established" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **SSH Connection**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Deployment Status
+          if [[ "${{ needs.deploy.result }}" == "success" ]]; then
+            echo "✅ **Deployment**: Completed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Deployment**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Verification Status
+          if [[ "${{ needs.verify.outputs.verification_status }}" == "success" ]]; then
+            echo "✅ **Service Verification**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Service Verification**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Logs Status
+          if [[ "${{ needs.logs.result }}" == "success" ]]; then
+            echo "✅ **Logs Collection**: Completed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Logs Collection**: Incomplete" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Access Information" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Admin Panel**: https://${{ secrets.VPN_DOMAIN || env.DEFAULT_DOMAIN }}:2053/${{ secrets.PANEL_PATH || 'BXv8SI7gBe' }}/" >> $GITHUB_STEP_SUMMARY
+          
+      - name: 📢 Output Result
+        run: |
+          if [[ "${{ needs.verify.outputs.verification_status }}" == "success" ]]; then
+            echo "✅ 3x-ui VPN has been deployed successfully"
+          else
+            echo "❌ 3x-ui VPN deployment encountered issues"
+          fi
           echo "📊 Logs have been archived as artifacts"
           echo "🔗 Admin panel: https://${{ secrets.VPN_DOMAIN || env.DEFAULT_DOMAIN }}:2053/${{ secrets.PANEL_PATH || 'BXv8SI7gBe' }}/" 
