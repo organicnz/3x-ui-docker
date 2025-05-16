@@ -5,18 +5,26 @@
 #   ./workflow-logs.sh [token] [command]                # Commands: list, fetch, status
 #   GITHUB_TOKEN=your_token ./workflow-logs.sh [command] # Alternative using env var
 
+# Load environment variables from .env file if it exists
+if [ -f .env ]; then
+  echo "Loading environment variables from .env file..."
+  export $(grep -v '^#' .env | xargs)
+fi
+
 # Default command if none provided
 COMMAND="${2:-latest}"
 
 # Check for token in environment variable or first argument
 if [ -n "$GITHUB_TOKEN" ]; then
   TOKEN="$GITHUB_TOKEN"
+  echo "Using GitHub token from environment variable"
 elif [ -n "$1" ] && [[ "$1" != "list" && "$1" != "fetch" && "$1" != "status" && "$1" != "latest" ]]; then
   TOKEN="$1"
   # If first arg is token, shift args so the command becomes $1
   if [ -n "$2" ]; then
     COMMAND="$2"
   fi
+  echo "Using GitHub token from command line argument"
 else
   # No token provided in args or env, use command as $1
   COMMAND="${1:-latest}"
