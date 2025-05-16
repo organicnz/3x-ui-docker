@@ -160,6 +160,80 @@ docker-compose up -d
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Development Workflow
+
+### Commit Rules
+
+This project follows strict commit message conventions to maintain a clean and meaningful git history.
+
+#### ⚠️ IMPORTANT: ALWAYS USE THE AUTO-COMMIT SCRIPT ⚠️
+
+**All team members must use our auto-commit script instead of regular git commands:**
+
+```bash
+npm run commit "description of changes" "Type"
+```
+
+Example:
+```bash
+npm run commit "add dark mode toggle" "Feat"
+```
+
+The script automatically:
+- Formats the commit message according to our standards
+- Determines the appropriate scope based on modified files
+- Handles add, commit, and push operations in one command
+
+#### Commit Format
+
+All commit messages follow this format:
+```
+<type>(<scope>): <description>
+```
+
+Where:
+- `<type>`: The type of change (see below)
+- `<scope>`: The area of the codebase affected (component, feature, etc.)
+- `<description>`: A brief description of the change
+
+#### Types of Commits
+- **Feat**: New feature or functionality
+  - Example: `Feat(player): add audio speed control`
+- **Fix**: Bug fix
+  - Example: `Fix(api): resolve authentication token expiration issue`
+- **Docs**: Documentation changes
+  - Example: `Docs(readme): update installation instructions`
+- **Refactor**: Code changes that neither fix bugs nor add features
+  - Example: `Refactor(utils): simplify date formatting functions`
+- **Style**: Changes related to styling, formatting, or UI (not affecting functionality)
+  - Example: `Style(tailwind): update button hover states`
+- **Test**: Adding or updating tests
+  - Example: `Test(unit): add tests for user authentication`
+- **Chore**: Maintenance tasks, dependency updates, etc.
+  - Example: `Chore(deps): update dependencies to latest versions`
+
+#### Using the Auto-commit Tool
+
+##### Interactive Mode
+If you don't provide arguments, the script will prompt you for information:
+
+```bash
+npm run commit
+```
+
+This will:
+1. Show you a list of valid commit types
+2. Ask for your commit message
+3. Ask you to select a commit type
+4. Confirm the formatted commit message before proceeding
+
+##### Direct Mode
+For quicker commits, provide the message and type directly:
+
+```bash
+npm run commit "your commit message" "Type"
+```
+
 ## Acknowledgements
 
 - [3x-ui Project](https://github.com/MHSanaei/3x-ui)

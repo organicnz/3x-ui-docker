@@ -1,0 +1,19 @@
+{
+  "name": "3x-ui-vpn",
+  "version": "1.0.0",
+  "description": "3x-ui VPN Service Management",
+  "scripts": {
+    "commit": "bash ./commit.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/organicnz/3x-ui-docker.git"
+  },
+  "keywords": [
+    "vpn",
+    "3x-ui",
+    "docker"
+  ],
+  "author": "",
+  "license": "ISC"
+} 
