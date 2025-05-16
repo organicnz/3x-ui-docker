@@ -23,6 +23,7 @@ function show_help {
   echo -e "  -l, --latest   Show latest logs (default)"
   echo -e "  -f, --fetch    Fetch logs from server (requires SSH access)"
   echo -e "  -a, --all      Show all available logs"
+  echo -e "  -g, --github   Instructions for checking GitHub Actions logs"
   echo -e ""
 }
 
@@ -32,6 +33,7 @@ function show_latest_logs {
   
   if [ ! -d "${LATEST_RUN_DIR}" ]; then
     echo -e "${RED}No workflow logs found. Run with --fetch option to download logs from server.${NC}"
+    echo -e "${YELLOW}Or run with --github to get instructions for checking GitHub Actions logs.${NC}"
     return 1
   fi
   
@@ -48,6 +50,38 @@ function show_latest_logs {
   fi
 }
 
+# Function to show GitHub Actions instructions
+function show_github_instructions {
+  echo -e "${BLUE}=== CHECKING GITHUB ACTIONS WORKFLOW LOGS ===${NC}"
+  echo -e ""
+  echo -e "Since GitHub Actions secrets can't be accessed locally, follow these steps to view workflow logs:"
+  echo -e ""
+  echo -e "${YELLOW}1. Visit GitHub Actions page:${NC}"
+  echo -e "   https://github.com/organicnz/3x-ui-docker/actions"
+  echo -e ""
+  echo -e "${YELLOW}2. Click on the latest workflow run (named \"3x-ui VPN Simple Deployment\")${NC}"
+  echo -e ""
+  echo -e "${YELLOW}3. Review logs for each workflow step${NC}"
+  echo -e ""
+  echo -e "${BLUE}=== SETTING UP LOCAL ENVIRONMENT FOR REMOTE LOG FETCHING ===${NC}"
+  echo -e ""
+  echo -e "To fetch logs directly from the remote server, you need to set these environment variables:"
+  echo -e "  SERVER_HOST - The hostname or IP address of your server"
+  echo -e "  SERVER_USER - The SSH username for the server"
+  echo -e "  DEPLOY_PATH - The deployment path on the server"
+  echo -e ""
+  echo -e "You can find these values in your GitHub repository secrets at:"
+  echo -e "  https://github.com/organicnz/3x-ui-docker/settings/secrets/actions"
+  echo -e ""
+  echo -e "Then set them locally with:"
+  echo -e "  export SERVER_HOST=your-server-hostname"
+  echo -e "  export SERVER_USER=your-server-username"
+  echo -e "  export DEPLOY_PATH=your-deployment-path"
+  echo -e ""
+  echo -e "After setting these variables, you can run: $0 -f"
+  echo -e ""
+}
+
 # Function to fetch logs from server
 function fetch_logs {
   echo -e "${YELLOW}Fetching logs from server...${NC}"
@@ -55,6 +89,8 @@ function fetch_logs {
   # Check if required environment variables are set
   if [ -z "${SERVER_HOST}" ] || [ -z "${SERVER_USER}" ] || [ -z "${DEPLOY_PATH}" ]; then
     echo -e "${RED}Error: Required environment variables not set.${NC}"
+    echo -e "${YELLOW}These variables are typically defined in GitHub Actions secrets.${NC}"
+    echo -e ""
     echo "Please set the following environment variables:"
     echo "  SERVER_HOST: The hostname or IP of the server"
     echo "  SERVER_USER: The SSH username for the server"
@@ -64,6 +100,8 @@ function fetch_logs {
     echo "  export SERVER_HOST=your-server.example.com"
     echo "  export SERVER_USER=username"
     echo "  export DEPLOY_PATH=/path/to/3x-ui"
+    echo ""
+    echo -e "${YELLOW}Run with --github for instructions on viewing logs in GitHub Actions.${NC}"
     return 1
   fi
   
@@ -79,6 +117,14 @@ function fetch_logs {
   if [ $? -ne 0 ]; then
     echo -e "${RED}Error: Failed to fetch logs from server.${NC}"
     echo "Please check your SSH connection and server path."
+    echo "Make sure your SSH key is properly configured and you have access to the server."
+    echo ""
+    echo -e "${YELLOW}If you're using GitHub Actions SSH key:${NC}"
+    echo "1. The GitHub Actions workflow uses a dedicated SSH key stored in secrets"
+    echo "2. Your local SSH key may be different"
+    echo "3. Consider setting up your SSH configuration (~/.ssh/config) with the correct key"
+    echo ""
+    echo -e "${YELLOW}Run with --github for instructions on viewing logs in GitHub Actions.${NC}"
     rm -rf ${RUN_DIR}
     return 1
   fi
@@ -98,6 +144,7 @@ function show_all_logs {
   # Check if logs directory exists
   if [ ! -d "${LOGS_DIR}" ] || [ -z "$(ls -A ${LOGS_DIR})" ]; then
     echo -e "${RED}No workflow logs found. Run with --fetch option to download logs from server.${NC}"
+    echo -e "${YELLOW}Or run with --github to get instructions for checking GitHub Actions logs.${NC}"
     return 1
   fi
   
@@ -165,6 +212,9 @@ else
         ;;
       -a|--all)
         show_all_logs
+        ;;
+      -g|--github)
+        show_github_instructions
         ;;
       *)
         echo -e "${RED}Unknown option: $1${NC}"

@@ -9,6 +9,7 @@
     "logs:fetch": "bash ./scripts/workflow-logs.sh -f",
     "logs:latest": "bash ./scripts/workflow-logs.sh -l",
     "logs:all": "bash ./scripts/workflow-logs.sh -a",
+    "logs:github": "bash ./scripts/workflow-logs.sh -g",
     "logs:help": "bash ./scripts/workflow-logs.sh -h",
     "setup:secrets": "bash ./scripts/setup-github-secrets.sh"
   },
