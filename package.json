@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "3x-ui VPN Service Management",
   "scripts": {
-    "commit": "bash ./commit.sh"
+    "commit": "bash ./scripts/commit.sh"
   },
   "repository": {
     "type": "git",

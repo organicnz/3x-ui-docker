@@ -162,6 +162,16 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Development Workflow
 
+### Project Structure
+
+The project is organized as follows:
+
+- **docker-compose.yml**: Main Docker Compose configuration
+- **scripts/**: Contains utility scripts for development and deployment
+  - **commit.sh**: Script for standardized commit messages
+- **.github/workflows/**: GitHub Actions workflow definitions
+- **x-ui.db**: SQLite database for persistent storage
+
 ### Commit Rules
 
 This project follows strict commit message conventions to maintain a clean and meaningful git history.
