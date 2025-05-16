@@ -213,22 +213,11 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       
-      - name: 📤 Transfer files
-        id: transfer
+      - name: 📥 Pull changes on server
+        id: pull_changes
         run: |
-          echo "Deploying as user: ${{ secrets.SERVER_USER }}"
-          echo "To host: ${{ secrets.SERVER_HOST }}"
-          echo "To path: ${{ secrets.DEPLOY_PATH }}"
-          echo "Known hosts file contents:"
-          cat ~/.ssh/known_hosts || echo "No known_hosts file found"
-          echo "Running rsync with verbose output..."
-          rsync -avvvz --progress --exclude='.git/' \
-            --exclude='.github/' \
-            --exclude='node_modules/' \
-            --exclude='.gitignore' \
-            --exclude='.cursor/' \
-            --exclude='workflow_logs/' \
-            ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_PATH }}
+          echo "Pulling latest changes on server..."
+          ssh -i ${{ secrets.SSH_PRIVATE_KEY }} -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "cd ${{ secrets.DEPLOY_PATH }} && git pull origin main"
       
       - name: 🚀 Deploy VPN service
         id: deploy
