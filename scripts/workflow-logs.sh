@@ -1,11 +1,39 @@
 #!/bin/bash
 
-# Combined script to manage GitHub Actions workflow logs
+# Combined script to manage GitHub Actions workflow logs without interactive prompts
 # Usage: 
-#   ./workflow-logs.sh                      # View and fetch latest logs
-#   ./workflow-logs.sh list                 # List recent workflow runs
-#   ./workflow-logs.sh fetch [RUN_ID]       # Fetch logs for specific run ID
-#   ./workflow-logs.sh status               # Check workflow status
+#   ./workflow-logs.sh [token] [command]                # Commands: list, fetch, status
+#   GITHUB_TOKEN=your_token ./workflow-logs.sh [command] # Alternative using env var
+
+# Default command if none provided
+COMMAND="${2:-latest}"
+
+# Check for token in environment variable or first argument
+if [ -n "$GITHUB_TOKEN" ]; then
+  TOKEN="$GITHUB_TOKEN"
+elif [ -n "$1" ] && [[ "$1" != "list" && "$1" != "fetch" && "$1" != "status" && "$1" != "latest" ]]; then
+  TOKEN="$1"
+  # If first arg is token, shift args so the command becomes $1
+  if [ -n "$2" ]; then
+    COMMAND="$2"
+  fi
+else
+  # No token provided in args or env, use command as $1
+  COMMAND="${1:-latest}"
+  
+  # Check if gh is already authenticated
+  AUTH_STATUS=$(gh auth status 2>&1)
+  if [[ "$AUTH_STATUS" != *"Logged in to github.com"* ]]; then
+    echo "❌ No GitHub token provided and not authenticated with GitHub CLI."
+    echo "Please provide a token as the first argument or via GITHUB_TOKEN environment variable:"
+    echo "  ./workflow-logs.sh YOUR_TOKEN"
+    echo "  GITHUB_TOKEN=YOUR_TOKEN ./workflow-logs.sh"
+    exit 1
+  else
+    echo "✅ Using existing GitHub CLI authentication"
+    USE_GH_CLI=true
+  fi
+fi
 
 # Get repository information from git remote
 REPO_URL=$(git remote get-url origin)
@@ -25,77 +53,65 @@ fi
 
 echo "Repository: $REPO_PATH"
 
-# Check GitHub authentication
-echo "Checking GitHub authentication..."
-AUTH_STATUS=$(gh auth status 2>&1)
-if [[ "$AUTH_STATUS" != *"Logged in to github.com"* ]]; then
-  echo "Not authenticated with GitHub. Please run 'gh auth login' first."
-  exit 1
-fi
-echo "✅ Authenticated with GitHub"
-
-# Check repository existence
-echo "Checking repository existence..."
-REPO_INFO=$(gh repo view "$REPO_PATH" --json name 2>/dev/null)
-if [ $? -ne 0 ]; then
-  echo "❌ Repository not found or not accessible: $REPO_PATH"
-  echo "Listing your accessible repositories:"
-  gh repo list --limit 5
-  exit 1
-fi
-echo "✅ Repository exists and is accessible"
-
 # Create workflow_logs directory if it doesn't exist
 mkdir -p workflow_logs
+
+# Function to make API calls with token or via GH CLI
+github_api() {
+  local endpoint="$1"
+  local accept_header="${2:-application/vnd.github.v3+json}"
+  local output_file="$3"
+  
+  if [ "$USE_GH_CLI" = true ]; then
+    if [ -n "$output_file" ]; then
+      gh api "$endpoint" -H "Accept: $accept_header" > "$output_file" 2>/dev/null
+      return $?
+    else
+      gh api "$endpoint" -H "Accept: $accept_header" 2>/dev/null
+      return $?
+    fi
+  else
+    if [ -n "$output_file" ]; then
+      curl -s -H "Authorization: token $TOKEN" -H "Accept: $accept_header" "https://api.github.com/$endpoint" > "$output_file"
+      return $?
+    else
+      curl -s -H "Authorization: token $TOKEN" -H "Accept: $accept_header" "https://api.github.com/$endpoint"
+      return $?
+    fi
+  fi
+}
 
 # Function to check workflow status
 check_workflow_status() {
   echo "Checking for workflow files..."
-  WORKFLOW_FILES=$(gh api repos/$REPO_PATH/actions/workflows --jq '.workflows[].name' 2>/dev/null)
+  WORKFLOW_FILES=$(github_api "repos/$REPO_PATH/actions/workflows")
+  
   if [ $? -ne 0 ] || [ -z "$WORKFLOW_FILES" ]; then
     echo "❌ No workflow files found or not accessible"
     echo "Checking local workflow files:"
     find .github/workflows -name "*.yml" -o -name "*.yaml" 2>/dev/null
     return 1
   fi
+  
   echo "✅ Workflow files found:"
-  echo "$WORKFLOW_FILES"
+  echo "$WORKFLOW_FILES" | jq -r '.workflows[].name' 2>/dev/null
 
   # Check for recent workflow runs
   echo "Checking for recent workflow runs..."
-  RECENT_RUNS=$(gh api repos/$REPO_PATH/actions/runs --jq '.workflow_runs[] | "\(.id) | \(.name) | \(.status) | \(.conclusion) | \(.created_at)"' 2>/dev/null | head -n 5)
-  if [ $? -ne 0 ] || [ -z "$RECENT_RUNS" ]; then
+  RECENT_RUNS=$(github_api "repos/$REPO_PATH/actions/runs")
+  
+  if [ $? -ne 0 ] || [ -z "$RECENT_RUNS" ] || ! echo "$RECENT_RUNS" | jq -e '.workflow_runs[0]' &>/dev/null; then
     echo "❌ No recent workflow runs found or not accessible"
     echo "This could be because:"
     echo "  - No workflows have been triggered yet"
     echo "  - Your token doesn't have sufficient permissions"
     echo "  - The repository doesn't have GitHub Actions enabled"
     
-    echo "Checking if GitHub Actions is enabled for this repository..."
-    ACTIONS_ENABLED=$(gh api repos/$REPO_PATH --jq '.actions_url' 2>/dev/null)
-    if [ -z "$ACTIONS_ENABLED" ]; then
-      echo "❌ Could not determine if GitHub Actions is enabled"
-    else
-      echo "✅ GitHub Actions appears to be enabled"
-    fi
-    
     return 1
   fi
 
   echo "✅ Recent workflow runs found:"
-  echo "$RECENT_RUNS"
-
-  # Check permissions for downloading logs
-  echo "Checking permissions for downloading logs..."
-  FIRST_RUN_ID=$(echo "$RECENT_RUNS" | head -n 1 | cut -d '|' -f 1 | xargs)
-  TEST_LOGS_URL=$(gh api repos/$REPO_PATH/actions/runs/$FIRST_RUN_ID/logs -H "Accept: application/vnd.github.v3.raw" --jq ".logs_url" 2>/dev/null)
-  if [ $? -ne 0 ] || [ -z "$TEST_LOGS_URL" ]; then
-    echo "❌ Cannot access logs - your token may not have sufficient permissions"
-    echo "Running 'gh auth refresh -s workflow' to refresh your token with workflow permissions"
-    gh auth refresh -s workflow
-  else
-    echo "✅ You have permissions to download logs"
-  fi
+  echo "$RECENT_RUNS" | jq -r '.workflow_runs[] | "\(.id) | \(.name) | \(.status) | \(.conclusion) | \(.created_at)"' | head -n 5
 
   echo "GitHub Actions workflow status check completed."
   return 0
@@ -104,7 +120,7 @@ check_workflow_status() {
 # Function to list recent workflow runs
 list_workflow_runs() {
   echo "Fetching latest workflow runs..."
-  RUNS_JSON=$(gh api repos/$REPO_PATH/actions/runs 2>/dev/null)
+  RUNS_JSON=$(github_api "repos/$REPO_PATH/actions/runs")
 
   # Check if there are any workflow runs
   if [ $? -ne 0 ] || [ -z "$RUNS_JSON" ] || [ "$RUNS_JSON" = "null" ] || ! echo "$RUNS_JSON" | jq -e '.workflow_runs[0]' &>/dev/null; then
@@ -124,48 +140,44 @@ fetch_run_logs() {
   
   if [ -z "$RUN_ID" ]; then
     echo "No run ID specified, fetching logs for latest run..."
-    LATEST_RUN=$(gh api repos/$REPO_PATH/actions/runs --jq '.workflow_runs[0]' 2>/dev/null)
+    LATEST_RUN=$(github_api "repos/$REPO_PATH/actions/runs")
     
     if [ $? -ne 0 ] || [ -z "$LATEST_RUN" ] || [ "$LATEST_RUN" = "null" ]; then
       echo "❌ No workflow runs found or not accessible."
       return 1
     fi
     
-    RUN_ID=$(echo $LATEST_RUN | jq -r '.id')
+    RUN_ID=$(echo $LATEST_RUN | jq -r '.workflow_runs[0].id')
     echo "Using latest run ID: $RUN_ID"
   fi
 
   echo "Fetching logs for workflow run $RUN_ID..."
-  LOG_RESULT=$(gh api repos/$REPO_PATH/actions/runs/$RUN_ID/logs -H "Accept: application/vnd.github.v3.raw" > workflow_logs/run-$RUN_ID.zip 2>&1)
+  LOG_PATH="workflow_logs/run-$RUN_ID.zip"
+  
+  github_api "repos/$REPO_PATH/actions/runs/$RUN_ID/logs" "application/vnd.github.v3.raw" "$LOG_PATH"
 
-  if [ $? -ne 0 ]; then
-    echo "❌ Failed to download logs: $LOG_RESULT"
+  if [ $? -ne 0 ] || [ ! -s "$LOG_PATH" ]; then
+    echo "❌ Failed to download logs."
     echo "This could be because:"
     echo "  - The workflow is still running"
-    echo "  - Your token doesn't have sufficient permissions"
+    echo "  - Your token doesn't have sufficient permissions (needs workflow scope)"
+    echo "  - The run ID doesn't exist"
     
-    echo "Refreshing token with workflow permissions..."
-    gh auth refresh -s workflow
-    
-    echo "Retrying log download..."
-    gh api repos/$REPO_PATH/actions/runs/$RUN_ID/logs -H "Accept: application/vnd.github.v3.raw" > workflow_logs/run-$RUN_ID.zip
-    if [ $? -ne 0 ]; then
-      echo "❌ Failed to download logs after token refresh."
-      return 1
-    fi
+    rm -f "$LOG_PATH" 2>/dev/null
+    return 1
   fi
 
   # Check if the file is empty or not a zip file
-  if [ ! -s workflow_logs/run-$RUN_ID.zip ] || ! file workflow_logs/run-$RUN_ID.zip | grep -q "Zip archive"; then
+  if ! file "$LOG_PATH" | grep -q "Zip archive"; then
     echo "❌ Downloaded file is not a valid zip archive."
-    rm workflow_logs/run-$RUN_ID.zip
+    rm -f "$LOG_PATH"
     return 1
   fi
 
   # Extract logs
   echo "Extracting logs to workflow_logs/run-$RUN_ID..."
   mkdir -p "workflow_logs/run-$RUN_ID"
-  unzip -o workflow_logs/run-$RUN_ID.zip -d "workflow_logs/run-$RUN_ID" || true  # Continue even if some files fail to extract
+  unzip -o "$LOG_PATH" -d "workflow_logs/run-$RUN_ID" || true  # Continue even if some files fail to extract
 
   echo "Logs extracted successfully. Check workflow_logs/run-$RUN_ID directory for log files."
   echo "Showing available log files:"
@@ -182,7 +194,7 @@ fetch_run_logs() {
 # Function to get detailed info about the latest run
 view_latest_run() {
   echo "Fetching latest workflow run..."
-  LATEST_RUN=$(gh api repos/$REPO_PATH/actions/runs --jq '.workflow_runs[0]' 2>/dev/null)
+  LATEST_RUN=$(github_api "repos/$REPO_PATH/actions/runs")
 
   if [ $? -ne 0 ] || [ -z "$LATEST_RUN" ] || [ "$LATEST_RUN" = "null" ]; then
     echo "❌ No workflow runs found or not accessible."
@@ -190,11 +202,11 @@ view_latest_run() {
   fi
 
   # Extract details of the latest run
-  RUN_ID=$(echo $LATEST_RUN | jq -r '.id')
-  RUN_NAME=$(echo $LATEST_RUN | jq -r '.name')
-  RUN_STATUS=$(echo $LATEST_RUN | jq -r '.status')
-  RUN_CONCLUSION=$(echo $LATEST_RUN | jq -r '.conclusion')
-  RUN_DATE=$(echo $LATEST_RUN | jq -r '.created_at')
+  RUN_ID=$(echo $LATEST_RUN | jq -r '.workflow_runs[0].id')
+  RUN_NAME=$(echo $LATEST_RUN | jq -r '.workflow_runs[0].name')
+  RUN_STATUS=$(echo $LATEST_RUN | jq -r '.workflow_runs[0].status')
+  RUN_CONCLUSION=$(echo $LATEST_RUN | jq -r '.workflow_runs[0].conclusion')
+  RUN_DATE=$(echo $LATEST_RUN | jq -r '.workflow_runs[0].created_at')
 
   echo "Latest workflow run:"
   echo "ID: $RUN_ID"
@@ -205,7 +217,7 @@ view_latest_run() {
 
   # Fetch the jobs for this run
   echo "Fetching jobs for workflow run $RUN_ID..."
-  JOBS=$(gh api repos/$REPO_PATH/actions/runs/$RUN_ID/jobs 2>/dev/null)
+  JOBS=$(github_api "repos/$REPO_PATH/actions/runs/$RUN_ID/jobs")
 
   if [ $? -eq 0 ] && [ -n "$JOBS" ] && [ "$JOBS" != "null" ]; then
     # Display jobs
@@ -220,18 +232,22 @@ view_latest_run() {
   return 0
 }
 
-# Main functionality based on arguments
-case "$1" in
+# Main functionality based on command
+case "$COMMAND" in
   "list")
     list_workflow_runs
     ;;
   "fetch")
-    fetch_run_logs "$2"
+    if [ -n "$3" ]; then
+      fetch_run_logs "$3"
+    else
+      fetch_run_logs
+    fi
     ;;
   "status")
     check_workflow_status
     ;;
-  *)
+  "latest"|*)
     # Default action: view and fetch latest logs
     view_latest_run
     ;;

@@ -6,6 +6,7 @@
     "commit": "bash ./scripts/commit.sh",
     "auto-commit": "bash ./scripts/auto-commit.sh",
     "logs": "bash ./scripts/workflow-logs.sh",
+    "logs:token": "GITHUB_TOKEN=$npm_config_token bash ./scripts/workflow-logs.sh",
     "logs:status": "bash ./scripts/workflow-logs.sh status",
     "logs:list": "bash ./scripts/workflow-logs.sh list",
     "logs:fetch": "bash ./scripts/workflow-logs.sh fetch"
