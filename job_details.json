@@ -1,0 +1,91 @@
+{
+  "name": "select_workflow",
+  "status": "completed",
+  "conclusion": "success",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Set workflow variables",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}
+{
+  "name": "Deploy 3x-ui",
+  "status": "completed",
+  "conclusion": "failure",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Checkout code",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Set up SSH",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Add host key",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Transfer files",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Deploy VPN service",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Verify deployment",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Post Set up SSH",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Checkout code",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}
+{
+  "name": "Initial Server Setup",
+  "status": "completed",
+  "conclusion": "skipped",
+  "steps": []
+}
+{
+  "name": "Backup x-ui.db",
+  "status": "completed",
+  "conclusion": "skipped",
+  "steps": []
+}

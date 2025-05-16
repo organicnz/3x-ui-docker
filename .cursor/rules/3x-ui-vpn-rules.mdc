@@ -1,7 +1,7 @@
 ---
-description: 
-globs: 
-alwaysApply: true
+description:
+globs:
+alwaysApply: false
 ---
 # 3x-ui VPN Service Architecture & Development Guidelines
 
@@ -415,11 +415,17 @@ networks:
 ## GitHub Actions CI/CD
 
 ### Workflow Structure
-- Create dedicated workflows for each deployment stage
-- Implement testing workflows for validation
-- Configure deployment workflows with appropriate triggers
-- Set up monitoring and notification workflows
-- Create maintenance workflows for routine tasks
+- Create dedicated workflow jobs for each operational phase:
+  - 🔍 **Selection**: Determine which workflow to run based on triggers
+  - 🚀 **Setup**: Initial server provisioning
+  - 🔍 **Validation**: Pre-deployment validation
+  - 🚢 **Deployment**: Deploy the VPN service
+  - ✅ **Verification**: Verify deployment success
+  - 💾 **Backup**: Create and manage backups
+- Implement comprehensive logging for each job phase
+- Use visual indicators (emojis) to improve workflow readability
+- Configure proper job dependencies and conditional execution
+- Create centralized workflow logs for troubleshooting
 
 ### Environment Configuration
 - Create environment-specific configuration
@@ -432,8 +438,17 @@ networks:
 - Implement blue-green deployment
 - Configure proper rollback procedures
 - Set up deployment approvals
-- Implement deployment verification
-- Configure automatic rollback on failure
+- Implement deployment verification with health checks
+- Configure automatic log collection for failed deployments
+- Maintain a history of deployment logs for troubleshooting
+
+### Logging & Monitoring
+- Create detailed deployment logs with timestamps
+- Implement continuous health checking
+- Archive logs as workflow artifacts
+- Symlink latest logs for quick access
+- Track container status and performance metrics
+- Implement log rotation to maintain history while managing storage
 
 ### Testing Integration
 - Run integration tests in CI pipeline

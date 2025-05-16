@@ -38,7 +38,7 @@ jobs:
       run_backup: ${{ steps.set_vars.outputs.run_backup }}
       environment: ${{ steps.set_vars.outputs.environment }}
     steps:
-      - name: Set workflow variables
+      - name: 🔍 Set workflow variables
         id: set_vars
         run: |
           # Default is to run deploy on push
@@ -77,27 +77,28 @@ jobs:
 
   # Initial VPS setup workflow
   setup:
-    name: Initial Server Setup
+    name: 🚀 Initial Server Setup
     needs: select_workflow
     if: needs.select_workflow.outputs.run_setup == 'true'
     runs-on: ubuntu-latest
     environment: ${{ needs.select_workflow.outputs.environment }}
     
     steps:
-      - name: Checkout code
+      - name: 📥 Checkout code
         uses: actions/checkout@v3
       
-      - name: Set up SSH
+      - name: 🔑 Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: Add host key
+      - name: 🔐 Add host key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       
-      - name: Server setup
+      - name: 🛠️ Server setup
+        id: server_setup
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -113,6 +114,7 @@ jobs:
             mkdir -p ${{ secrets.DEPLOY_PATH }}/cert
             mkdir -p ${{ secrets.DEPLOY_PATH }}/logs
             mkdir -p ${{ secrets.DEPLOY_PATH }}/backups
+            mkdir -p ${{ secrets.DEPLOY_PATH }}/workflow_logs
             
             # Set proper permissions
             echo "Setting permissions..."
@@ -159,9 +161,13 @@ jobs:
             EOL
             sudo mv /tmp/x-ui-logrotate /etc/logrotate.d/x-ui
             
+            # Log the setup process
+            TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+            echo "Server setup completed at ${TIMESTAMP}" > "${{ secrets.DEPLOY_PATH }}/workflow_logs/setup_${TIMESTAMP}.log"
+            
             echo "Server setup completed successfully!"
       
-      - name: Verify setup
+      - name: ✅ Verify setup
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -177,29 +183,59 @@ jobs:
             
             echo "Setup verification completed!"
   
-  # Deployment workflow
-  deploy:
-    name: Deploy 3x-ui
+  # Pre-deployment validation job
+  validate:
+    name: 🔍 Pre-deployment Validation
     needs: select_workflow
     if: needs.select_workflow.outputs.run_deploy == 'true'
     runs-on: ubuntu-latest
     environment: ${{ needs.select_workflow.outputs.environment }}
     
     steps:
-      - name: Checkout code
+      - name: 📥 Checkout code
         uses: actions/checkout@v3
       
-      - name: Set up SSH
+      - name: 🧰 Validate Docker Compose
+        run: |
+          cat docker-compose.yml
+          echo "Validating Docker Compose file syntax..."
+          
+          # Check if docker-compose file exists
+          if [ ! -f docker-compose.yml ]; then
+            echo "::error::docker-compose.yml not found!"
+            exit 1
+          fi
+          
+          # Basic validation of YAML syntax
+          cat docker-compose.yml | python -c "import sys, yaml; yaml.safe_load(sys.stdin)" && echo "✅ Valid YAML" || (echo "❌ Invalid YAML" && exit 1)
+          
+          # Check if required services are defined
+          grep -q "3x-ui:" docker-compose.yml && echo "✅ 3x-ui service found" || (echo "❌ 3x-ui service not found" && exit 1)
+  
+  # Deployment workflow
+  deploy:
+    name: 🚢 Deploy 3x-ui
+    needs: [select_workflow, validate]
+    if: always() && needs.select_workflow.outputs.run_deploy == 'true' && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.select_workflow.outputs.environment }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v3
+      
+      - name: 🔑 Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: Add host key
+      - name: 🔐 Add host key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       
-      - name: Transfer files
+      - name: 📤 Transfer files
+        id: transfer
         run: |
           rsync -avz --exclude='.git/' \
             --exclude='.github/' \
@@ -207,7 +243,8 @@ jobs:
             --exclude='.gitignore' \
             ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_PATH }}
       
-      - name: Deploy VPN service
+      - name: 🚀 Deploy VPN service
+        id: deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -215,26 +252,66 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
+            
+            # Log deployment start
+            TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+            DEPLOY_LOG="${{ secrets.DEPLOY_PATH }}/workflow_logs/deploy_${TIMESTAMP}.log"
+            
+            echo "Deployment started at $(date)" >> $DEPLOY_LOG
+            echo "Git commit: ${{ github.sha }}" >> $DEPLOY_LOG
             
             # Create directories if they don't exist
-            mkdir -p cert logs
+            mkdir -p cert logs workflow_logs
+            
+            # Backup current state before deploying
+            echo "Creating pre-deployment backup" >> $DEPLOY_LOG
+            cp x-ui.db "backups/x-ui.db.pre_deploy_${TIMESTAMP}" 2>/dev/null || echo "No database to backup yet" >> $DEPLOY_LOG
             
             # Stop running container
-            docker-compose down || true
+            echo "Stopping any running containers" >> $DEPLOY_LOG
+            docker-compose down >> $DEPLOY_LOG 2>&1 || true
             
             # Pull latest image
-            docker-compose pull
+            echo "Pulling latest image" >> $DEPLOY_LOG
+            docker-compose pull >> $DEPLOY_LOG 2>&1
             
             # Start container
-            docker-compose up -d
+            echo "Starting container" >> $DEPLOY_LOG
+            docker-compose up -d >> $DEPLOY_LOG 2>&1
             
-            # Check if service is running
-            docker-compose ps
+            # Save container status
+            echo "Container status:" >> $DEPLOY_LOG
+            docker-compose ps >> $DEPLOY_LOG 2>&1
             
-            # Check logs
-            docker-compose logs --tail=20
+            # Check initial logs
+            echo "Initial container logs:" >> $DEPLOY_LOG
+            docker-compose logs --tail=20 >> $DEPLOY_LOG 2>&1
+            
+            echo "Deployment process completed at $(date)" >> $DEPLOY_LOG
+            
+            # Create a symlink to the latest deployment log
+            ln -sf $DEPLOY_LOG "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_deploy.log"
+  
+  # Verification job
+  verify:
+    name: ✅ Verify Deployment
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: ${{ needs.select_workflow.outputs.environment }}
+    
+    steps:
+      - name: 🔑 Set up SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: Verify deployment
+      - name: 🔐 Add host key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+      
+      - name: 🔍 Check deployment status
+        id: check_status
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -243,45 +320,92 @@ jobs:
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             
+            # Create verification log
+            TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+            VERIFY_LOG="${{ secrets.DEPLOY_PATH }}/workflow_logs/verify_${TIMESTAMP}.log"
+            
+            echo "Verification started at $(date)" >> $VERIFY_LOG
+            
             # Wait for service to stabilize
+            echo "Waiting for service to stabilize..." >> $VERIFY_LOG
             sleep 30
             
-            # Check if container is healthy
-            CONTAINER_STATUS=$(docker inspect --format='{{.State.Health.Status}}' 3x-ui)
+            # Check if container is running
+            echo "Container status:" >> $VERIFY_LOG
+            docker-compose ps >> $VERIFY_LOG 2>&1
             
-            if [ "$CONTAINER_STATUS" = "healthy" ]; then
-              echo "Deployment successful! Container is healthy."
+            # Check if container is healthy
+            echo "Container health check:" >> $VERIFY_LOG
+            CONTAINER_STATUS=$(docker inspect --format='{{.State.Health.Status}}' 3x-ui 2>/dev/null || echo "Container not found")
+            echo "Health status: $CONTAINER_STATUS" >> $VERIFY_LOG
+            
+            # Get detailed logs for troubleshooting if needed
+            echo "Container logs:" >> $VERIFY_LOG
+            docker-compose logs --tail=50 >> $VERIFY_LOG 2>&1
+            
+            # Check if services are accessible
+            echo "Checking if admin panel is accessible:" >> $VERIFY_LOG
+            curl -s -o /dev/null -w "%{http_code}" http://localhost:54321/login >> $VERIFY_LOG 2>&1 || echo "Failed to connect to admin panel" >> $VERIFY_LOG
+            
+            # Output verification summary
+            echo "Verification completed at $(date)" >> $VERIFY_LOG
+            
+            # Create a symlink to the latest verification log
+            ln -sf $VERIFY_LOG "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_verify.log"
+            
+            # Evaluate if deployment was successful
+            if [[ "$CONTAINER_STATUS" = "healthy" ]]; then
+              echo "✅ Deployment verification successful! Container is healthy."
               exit 0
             else
-              echo "Container is not healthy. Status: $CONTAINER_STATUS"
-              echo "Container logs:"
-              docker-compose logs --tail=50
+              echo "❌ Deployment verification failed. Container status: $CONTAINER_STATUS"
+              echo "See logs for details: $VERIFY_LOG"
               exit 1
             fi
+      
+      - name: 📥 Download logs
+        if: always()
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_*.log"
+          target: "./workflow_logs"
+          strip_components: 2
+      
+      - name: 📦 Archive logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-logs
+          path: ./workflow_logs/
+          retention-days: 7
   
   # Backup workflow
   backup:
-    name: Backup x-ui.db
+    name: 💾 Backup x-ui.db
     needs: select_workflow
     if: needs.select_workflow.outputs.run_backup == 'true'
     runs-on: ubuntu-latest
     environment: ${{ needs.select_workflow.outputs.environment }}
     
     steps:
-      - name: Set up SSH
+      - name: 🔑 Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: Add host key
+      - name: 🔐 Add host key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       
-      - name: Create backup directory
+      - name: 📁 Create backup directory
         run: mkdir -p ./backups
       
-      - name: Perform backup
+      - name: 💾 Perform backup
+        id: backup
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -290,26 +414,38 @@ jobs:
           script: |
             # Create backup directory if it doesn't exist
             mkdir -p ${{ secrets.DEPLOY_PATH }}/backups
+            mkdir -p ${{ secrets.DEPLOY_PATH }}/workflow_logs
             
             # Generate timestamp
             TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+            BACKUP_LOG="${{ secrets.DEPLOY_PATH }}/workflow_logs/backup_${TIMESTAMP}.log"
+            
+            echo "Backup started at $(date)" >> $BACKUP_LOG
             
             # Create backup
             cd ${{ secrets.DEPLOY_PATH }}
+            echo "Creating database backup..." >> $BACKUP_LOG
             cp x-ui.db "backups/x-ui.db.backup_${TIMESTAMP}"
             
             # Compress backup
+            echo "Compressing backup..." >> $BACKUP_LOG
             gzip "backups/x-ui.db.backup_${TIMESTAMP}"
             
             # Keep only the 7 most recent backups
-            ls -tp backups/x-ui.db.backup_* | grep -v '/$' | tail -n +8 | xargs -I {} rm -- {}
+            echo "Cleaning up old backups..." >> $BACKUP_LOG
+            ls -tp backups/x-ui.db.backup_* | grep -v '/$' | tail -n +8 | xargs -I {} rm -- {} 2>/dev/null || echo "No old backups to clean up" >> $BACKUP_LOG
             
             # Report backup status
-            echo "Backup completed: x-ui.db.backup_${TIMESTAMP}.gz"
-            echo "Available backups:"
-            ls -lh backups/
+            echo "Available backups:" >> $BACKUP_LOG
+            ls -lh backups/ >> $BACKUP_LOG 2>&1
+            
+            echo "Backup completed at $(date)" >> $BACKUP_LOG
+            echo "✅ Backup completed: x-ui.db.backup_${TIMESTAMP}.gz"
+            
+            # Create a symlink to the latest backup log
+            ln -sf $BACKUP_LOG "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_backup.log"
       
-      - name: Download latest backup
+      - name: 📥 Download latest backup
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -319,9 +455,28 @@ jobs:
           target: "./backups"
           strip_components: 2
       
-      - name: Archive backup
+      - name: 📥 Download backup logs
+        if: always()
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_backup.log"
+          target: "./workflow_logs"
+          strip_components: 2
+      
+      - name: 📦 Archive backup
         uses: actions/upload-artifact@v3
         with:
           name: x-ui-db-backup
           path: ./backups/
+          retention-days: 7
+      
+      - name: 📦 Archive backup logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: backup-logs
+          path: ./workflow_logs/
           retention-days: 7 
