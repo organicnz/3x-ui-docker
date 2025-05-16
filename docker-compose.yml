@@ -3,7 +3,7 @@ version: '3.8'
 # 3x-ui VPN Service configuration
 services:
   3x-ui:
-    image: mhsanaei/3x-ui:latest
+    image: ghcr.io/mhsanaei/3x-ui:latest
     container_name: 3x-ui
     restart: unless-stopped
     ports:

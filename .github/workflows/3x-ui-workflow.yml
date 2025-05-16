@@ -73,10 +73,10 @@ jobs:
       - name: 🧰 Verify Docker image
         run: |
           echo "Testing Docker image pull..."
-          docker pull mhsanaei/3x-ui:latest
+          docker pull ghcr.io/mhsanaei/3x-ui:latest
           echo "✅ Docker image is available and can be pulled"
-          docker inspect mhsanaei/3x-ui:latest --format='{{.Config.Entrypoint}}'
-          docker inspect mhsanaei/3x-ui:latest --format='{{.Config.Cmd}}'
+          docker inspect ghcr.io/mhsanaei/3x-ui:latest --format='{{.Config.Entrypoint}}'
+          docker inspect ghcr.io/mhsanaei/3x-ui:latest --format='{{.Config.Cmd}}'
 
   # Initial server setup
   setup:
