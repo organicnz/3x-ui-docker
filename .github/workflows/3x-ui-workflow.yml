@@ -216,7 +216,13 @@ jobs:
       - name: 📤 Transfer files
         id: transfer
         run: |
-          rsync -avz --exclude='.git/' \
+          echo "Deploying as user: ${{ secrets.SERVER_USER }}"
+          echo "To host: ${{ secrets.SERVER_HOST }}"
+          echo "To path: ${{ secrets.DEPLOY_PATH }}"
+          echo "Known hosts file contents:"
+          cat ~/.ssh/known_hosts || echo "No known_hosts file found"
+          echo "Running rsync with verbose output..."
+          rsync -avvvz --progress --exclude='.git/' \
             --exclude='.github/' \
             --exclude='node_modules/' \
             --exclude='.gitignore' \
