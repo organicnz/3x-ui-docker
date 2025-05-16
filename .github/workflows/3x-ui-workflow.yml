@@ -1,209 +1,131 @@
-name: 3x-ui VPN Service Management
+name: 3x-ui VPN Service
 
 on:
   push:
     branches: [main]
     paths-ignore:
-      - "**.md"
-      - ".gitignore"
+      - '**.md'
+      - '.gitignore'
   pull_request:
     branches: [main]
   workflow_dispatch:
     inputs:
-      workflow_type:
-        description: Workflow to run
+      action:
+        description: Action to perform
         required: true
         default: deploy
         type: choice
         options:
           - setup
           - deploy
-          - manage_secrets
-      environment:
-        description: Environment to target
-        required: true
-        default: production
-        type: choice
-        options:
-          - production
-          - staging
 
-# Define default permissions for GitHub token
+# Define default permissions
 permissions:
   contents: read
   actions: read
 
+# Global environment variables
+env:
+  DEFAULT_DOMAIN: service.foodshare.club
+  DEFAULT_EMAIL: admin@example.com
+
 jobs:
-  # Determine which workflow to run
-  select_workflow:
+  # Validate configuration (runs on all events)
+  validate:
+    name: 🧪 Validate Configuration
     runs-on: ubuntu-latest
     outputs:
-      run_setup: ${{ steps.set_vars.outputs.run_setup }}
-      run_deploy: ${{ steps.set_vars.outputs.run_deploy }}
-      environment: ${{ steps.set_vars.outputs.environment }}
-    steps:
-      - name: 🔍 Set workflow variables
-        id: set_vars
-        run: |
-          # Default is to run deploy on push
-          RUN_SETUP="false"
-          RUN_DEPLOY="false"
-          ENVIRONMENT="production"
-          
-          # Push event runs deploy only on main branch
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-            RUN_DEPLOY="true"
-          fi
-          
-          # Pull request events don't trigger deployments
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            RUN_DEPLOY="false"
-          fi
-          
-          # Workflow dispatch uses specified options
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            ENVIRONMENT="${{ github.event.inputs.environment }}"
-            
-            if [[ "${{ github.event.inputs.workflow_type }}" == "setup" ]]; then
-              RUN_SETUP="true"
-            elif [[ "${{ github.event.inputs.workflow_type }}" == "deploy" ]]; then
-              RUN_DEPLOY="true"
-            fi
-          fi
-          
-          echo "run_setup=${RUN_SETUP}" >> $GITHUB_OUTPUT
-          echo "run_deploy=${RUN_DEPLOY}" >> $GITHUB_OUTPUT
-          echo "environment=${ENVIRONMENT}" >> $GITHUB_OUTPUT
-
-  # Testing job - runs on all pushes and PRs
-  test:
-    name: 🧪 Test Configuration
-    runs-on: ubuntu-latest
+      action: ${{ steps.set_action.outputs.action }}
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
         
-      - name: 🧰 Set up Docker
-        uses: docker/setup-buildx-action@v3
+      - name: 🔍 Determine action
+        id: set_action
+        run: |
+          # Default action based on event type
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ACTION="${{ github.event.inputs.action }}"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            ACTION="deploy"
+          else
+            ACTION="validate_only"  # PR events only validate
+          fi
+          echo "action=${ACTION}" >> $GITHUB_OUTPUT
+          echo "Selected action: ${ACTION}"
         
-      - name: 🧪 Validate Docker Compose
+      - name: 🧰 Validate Docker Compose
         run: |
           echo "Validating Docker Compose file syntax..."
-          
-          # Check if docker-compose file exists
           if [ ! -f docker-compose.yml ]; then
             echo "::error::docker-compose.yml not found!"
             exit 1
           fi
           
-          # Basic validation of YAML syntax
+          # Validate YAML syntax
           cat docker-compose.yml | python -c "import sys, yaml; yaml.safe_load(sys.stdin)" && echo "✅ Valid YAML" || (echo "❌ Invalid YAML" && exit 1)
           
-          # Check if required services are defined
+          # Check required services and ports
           grep -q "3x-ui:" docker-compose.yml && echo "✅ 3x-ui service found" || (echo "❌ 3x-ui service not found" && exit 1)
+          grep -q "443:443" docker-compose.yml && echo "✅ HTTPS port (443) configured" || (echo "⚠️ HTTPS port (443) might not be configured" && exit 1)
+          grep -q "2053:2053" docker-compose.yml && echo "✅ VPN Panel port (2053) configured" || (echo "⚠️ VPN Panel port (2053) might not be configured" && exit 1)
       
-      - name: 🔒 Validate secure ports configuration
-        run: |
-          echo "Validating secure ports configuration..."
-          
-          # Check for HTTPS port mapping (port 443)
-          grep -q "443:443" docker-compose.yml && echo "✅ HTTPS port (443) configured correctly" || (echo "⚠️ HTTPS port (443) might not be configured" && exit 1)
-          
-          # Check for VPN panel port mapping (port 2053)
-          grep -q "2053:2053" docker-compose.yml && echo "✅ VPN Panel port (2053) configured correctly" || (echo "⚠️ VPN Panel port (2053) might not be configured" && exit 1)
-      
-      - name: 🧰 Test Docker image
+      - name: 🧰 Verify Docker image
         run: |
           echo "Testing Docker image pull..."
           docker pull mhsanaei/3x-ui:latest
           echo "✅ Docker image is available and can be pulled"
-          
-          # Verify the image has the expected entrypoint/command
           docker inspect mhsanaei/3x-ui:latest --format='{{.Config.Entrypoint}}'
           docker inspect mhsanaei/3x-ui:latest --format='{{.Config.Cmd}}'
-          
-      - name: 🧰 Static security analysis
-        run: |
-          # Example using docker scan (if available) or other static analysis tools
-          echo "Performing basic static security analysis..."
-          
-          # Check for any exposed sensitive ports
-          if grep -q "54321:54321" docker-compose.yml; then
-            echo "⚠️ Admin panel port 54321 is exposed publicly. Consider using reverse proxy with authentication."
-          fi
-          
-          # Check for any hardcoded credentials (simple check)
-          if grep -q "password\|secret\|token\|key" docker-compose.yml; then
-            echo "⚠️ Potential hardcoded credentials detected in docker-compose.yml"
-          else
-            echo "✅ No obvious hardcoded credentials detected"
-          fi
 
-  # Initial VPS setup workflow
+  # Initial server setup
   setup:
-    name: 🚀 Initial Server Setup
-    needs: [select_workflow, test]
-    if: needs.select_workflow.outputs.run_setup == 'true'
+    name: 🚀 Server Setup
+    needs: validate
+    if: needs.validate.outputs.action == 'setup'
     runs-on: ubuntu-latest
-    environment: ${{ needs.select_workflow.outputs.environment }}
     
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
       
-      - name: 🔑 Set up SSH
+      - name: 🔑 Setup SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: 🔐 Add host key
+      - name: 🔐 Add known hosts
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       
-      - name: 🛠️ Server setup
-        id: server_setup
+      - name: 🛠️ Configure server
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Create deployment directory structure
-            echo "Creating deployment directory: ${{ secrets.DEPLOY_PATH }}"
-            mkdir -p ${{ secrets.DEPLOY_PATH }}
-            
-            # Create subdirectories
-            echo "Creating subdirectories..."
-            mkdir -p ${{ secrets.DEPLOY_PATH }}/cert
-            mkdir -p ${{ secrets.DEPLOY_PATH }}/logs
-            mkdir -p ${{ secrets.DEPLOY_PATH }}/workflow_logs
-            
-            # Set proper permissions
-            echo "Setting permissions..."
+            # Create directory structure
+            echo "Creating deployment directories..."
+            mkdir -p ${{ secrets.DEPLOY_PATH }}/{cert,logs,workflow_logs}
             chmod 755 ${{ secrets.DEPLOY_PATH }}
             chmod 700 ${{ secrets.DEPLOY_PATH }}/cert
             
-            # Check if Docker is installed
+            # Install Docker if needed
             if ! command -v docker &> /dev/null; then
-              echo "Docker not found, installing..."
+              echo "Installing Docker..."
               curl -fsSL https://get.docker.com -o get-docker.sh
               sh get-docker.sh
-            else
-              echo "Docker is already installed"
             fi
             
-            # Check if Docker Compose is installed
+            # Install Docker Compose if needed
             if ! command -v docker-compose &> /dev/null; then
-              echo "Docker Compose not found, installing..."
+              echo "Installing Docker Compose..."
               apt-get update
               apt-get install -y docker-compose
-            else
-              echo "Docker Compose is already installed"
             fi
             
-            # Set up logrotate for logs
-            echo "Setting up log rotation..."
+            # Setup log rotation
             cat > /tmp/x-ui-logrotate << 'EOL'
             ${{ secrets.DEPLOY_PATH }}/logs/*.log {
                 daily
@@ -217,118 +139,85 @@ jobs:
             EOL
             sudo mv /tmp/x-ui-logrotate /etc/logrotate.d/x-ui
             
-            # Create SSL certificate directory for Let's Encrypt
+            # Create SSL directories
             mkdir -p ${{ secrets.DEPLOY_PATH }}/cert/letsencrypt
             
-            # Log the setup process
+            # Log setup completion
             TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
             echo "Server setup completed at ${TIMESTAMP}" > "${{ secrets.DEPLOY_PATH }}/workflow_logs/setup_${TIMESTAMP}.log"
-            
-            echo "Server setup completed successfully!"
+            echo "✅ Server configuration complete"
       
-      - name: ✅ Verify setup
+      - name: 📋 Verify installation
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "Verifying directory structure..."
+            echo "Verifying installation..."
             ls -la ${{ secrets.DEPLOY_PATH }}
-            
-            echo "Verifying Docker installation..."
             docker --version
             docker-compose --version
-            
-            echo "Setup verification completed!"
-  
-  # Pre-deployment validation job
-  validate:
-    name: 🔍 Pre-deployment Validation
-    needs: [select_workflow, test]
-    if: needs.select_workflow.outputs.run_deploy == 'true'
+
+  # Deploy application (includes SSL setup)
+  deploy:
+    name: 🚢 Deploy Application
+    needs: validate
+    if: needs.validate.outputs.action == 'deploy'
     runs-on: ubuntu-latest
-    environment: ${{ needs.select_workflow.outputs.environment }}
     
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
-        
-      - name: 🌐 Verify domain configuration
-        run: |
-          echo "Verifying domain configuration: ${{ secrets.VPN_DOMAIN || 'service.foodshare.club' }}"
-          DOMAIN="${{ secrets.VPN_DOMAIN || 'service.foodshare.club' }}"
-          
-          # Check if the domain resolves
-          echo "Checking if domain resolves..."
-          nslookup ${DOMAIN} || echo "Warning: Domain may not be properly configured yet"
-          
-          # Check SSL cert status with timeout in case it's not available
-          echo "Checking SSL certificate status..."
-          timeout 10s openssl s_client -connect ${DOMAIN}:443 -servername ${DOMAIN} </dev/null 2>/dev/null | openssl x509 -noout -dates || echo "SSL Certificate is not properly configured or not accessible yet"
       
-      - name: 🧰 Validate Docker Compose for deployment
-        run: |
-          # Check if docker-compose file exists
-          if [ ! -f docker-compose.yml ]; then
-            echo "::error::docker-compose.yml not found!"
-            exit 1
-          fi
-          
-          # Basic validation of YAML syntax
-          cat docker-compose.yml | python -c "import sys, yaml; yaml.safe_load(sys.stdin)" && echo "✅ Valid YAML" || (echo "❌ Invalid YAML" && exit 1)
-          
-          # Check if required services are defined
-          grep -q "3x-ui:" docker-compose.yml && echo "✅ 3x-ui service found" || (echo "❌ 3x-ui service not found" && exit 1)
-  
-  # Deploy SSL certificates with Let's Encrypt (if needed)
-  setup_ssl:
-    name: 🔒 Setup SSL Certificate
-    needs: [validate, select_workflow]
-    runs-on: ubuntu-latest
-    environment: ${{ needs.select_workflow.outputs.environment }}
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 🔑 Set up SSH
+      - name: 🔑 Setup SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: 🔐 Add host key
+      - name: 🔐 Add known hosts
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       
-      - name: 🔒 Generate SSL Certificate
-        id: ssl_setup
+      - name: 🔗 Verify SSH connection
+        run: |
+          echo "Testing SSH connection..."
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '✅ SSH connection successful'" || (echo '❌ SSH connection failed' && exit 1)
+      
+      - name: 🔒 Setup SSL Certificate
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             
-            # Set domain name
-            DOMAIN="${{ secrets.VPN_DOMAIN || 'service.foodshare.club' }}"
-            ADMIN_EMAIL="${{ secrets.ADMIN_EMAIL || 'admin@example.com' }}"
+            # Setup variables
+            DOMAIN="${{ secrets.VPN_DOMAIN || env.DEFAULT_DOMAIN }}"
+            ADMIN_EMAIL="${{ secrets.ADMIN_EMAIL || env.DEFAULT_EMAIL }}"
+            TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
             
-            # Check if certbot is installed
+            # Create log file
+            DEPLOY_LOG="${{ secrets.DEPLOY_PATH }}/workflow_logs/deploy_${TIMESTAMP}.log"
+            echo "Deployment started at $(date)" > $DEPLOY_LOG
+            echo "Domain: ${DOMAIN}" >> $DEPLOY_LOG
+            
+            # Install certbot if needed
             if ! command -v certbot &> /dev/null; then
-              echo "Certbot not found, installing..."
+              echo "Installing certbot..." >> $DEPLOY_LOG
               apt-get update
               apt-get install -y certbot
             fi
             
-            # First stop any running container that might use port 80/443
-            docker-compose down || true
+            # Stop any running containers
+            echo "Stopping any running containers..." >> $DEPLOY_LOG
+            docker-compose down >> $DEPLOY_LOG 2>&1 || true
             
-            # Generate certificate if not already exists
+            # Generate SSL certificate if needed
             if [ ! -f "${{ secrets.DEPLOY_PATH }}/cert/fullchain.pem" ]; then
-              echo "Generating SSL certificate for ${DOMAIN}..."
-              certbot certonly --standalone --preferred-challenges http --agree-tos -n -d ${DOMAIN} -m ${ADMIN_EMAIL} \
+              echo "Generating SSL certificate for ${DOMAIN}..." >> $DEPLOY_LOG
+              certbot certonly --standalone --preferred-challenges http --agree-tos -n \
+                -d ${DOMAIN} -m ${ADMIN_EMAIL} \
                 --cert-path=${{ secrets.DEPLOY_PATH }}/cert/cert.pem \
                 --fullchain-path=${{ secrets.DEPLOY_PATH }}/cert/fullchain.pem \
                 --chain-path=${{ secrets.DEPLOY_PATH }}/cert/chain.pem \
@@ -337,186 +226,80 @@ jobs:
                 --work-dir=${{ secrets.DEPLOY_PATH }}/cert/letsencrypt \
                 --logs-dir=${{ secrets.DEPLOY_PATH }}/logs/letsencrypt
             else
-              echo "SSL certificate already exists, checking expiration..."
-              # Check certificate expiration (might need to renew if close to expiration)
+              echo "SSL certificate already exists, checking expiry..." >> $DEPLOY_LOG
               CERT_EXPIRY=$(openssl x509 -enddate -noout -in "${{ secrets.DEPLOY_PATH }}/cert/fullchain.pem" | cut -d= -f2)
-              echo "Certificate expires on: ${CERT_EXPIRY}"
-              
-              # Optional: Add logic to renew if expiring soon
+              echo "Certificate expires on: ${CERT_EXPIRY}" >> $DEPLOY_LOG
             fi
             
             # Set proper permissions
             chmod 600 ${{ secrets.DEPLOY_PATH }}/cert/*.pem
             
-            echo "SSL certificate setup completed successfully!"
-
-  # Deployment workflow
-  deploy:
-    name: 🚢 Deploy 3x-ui
-    needs: [validate, setup_ssl, select_workflow]
-    if: always() && needs.validate.result == 'success' && needs.setup_ssl.result == 'success'
-    runs-on: ubuntu-latest
-    environment: ${{ needs.select_workflow.outputs.environment }}
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 🔑 Set up SSH
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      
-      - name: 🔐 Add host key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      
-      - name: 🔗 Test SSH connection to VPS
-        run: |
-          echo "Testing SSH connection to ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}..."
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '✅ SSH connection successful'" || (echo '❌ SSH connection failed' && exit 1)
-      
-      - name: 📥 Pull changes on server
-        id: pull_changes
-        run: |
-          echo "Pulling latest changes on server..."
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "cd ${{ secrets.DEPLOY_PATH }} && git pull origin main"
-      
-      - name: 🚀 Deploy VPN service
-        id: deploy
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            
-            # Set domain name
-            DOMAIN="${{ secrets.VPN_DOMAIN || 'service.foodshare.club' }}"
-            
-            # Log deployment start
-            TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-            DEPLOY_LOG="${{ secrets.DEPLOY_PATH }}/workflow_logs/deploy_${TIMESTAMP}.log"
-            
-            echo "Deployment started at $(date)" >> $DEPLOY_LOG
-            echo "Git commit: ${{ github.sha }}" >> $DEPLOY_LOG
-            echo "Domain: ${DOMAIN}" >> $DEPLOY_LOG
-            
-            # Create directories if they don't exist
-            mkdir -p cert logs workflow_logs
-            
-            # Modify config to use domain name if different from YAML
-            echo "Updating Docker configuration for domain: ${DOMAIN}" >> $DEPLOY_LOG
-            
-            # Create/update environment file for Docker Compose
+            # Create .env file
+            echo "Setting up environment file..." >> $DEPLOY_LOG
             cat > .env << EOL
             VPN_DOMAIN=${DOMAIN}
-            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL || 'admin@example.com' }}
+            ADMIN_EMAIL=${ADMIN_EMAIL}
             EOL
             
-            # Stop running container
-            echo "Stopping any running containers" >> $DEPLOY_LOG
-            docker-compose down >> $DEPLOY_LOG 2>&1 || true
-            
-            # Pull latest image
-            echo "Pulling latest image" >> $DEPLOY_LOG
+            # Pull latest image and start container
+            echo "Pulling latest Docker image..." >> $DEPLOY_LOG
             docker-compose pull >> $DEPLOY_LOG 2>&1
             
-            # Start container
-            echo "Starting container" >> $DEPLOY_LOG
+            echo "Starting container..." >> $DEPLOY_LOG
             docker-compose up -d >> $DEPLOY_LOG 2>&1
             
-            # Save container status
+            # Log container status
             echo "Container status:" >> $DEPLOY_LOG
             docker-compose ps >> $DEPLOY_LOG 2>&1
-            
-            # Check initial logs
-            echo "Initial container logs:" >> $DEPLOY_LOG
             docker-compose logs --tail=20 >> $DEPLOY_LOG 2>&1
             
-            echo "Deployment process completed at $(date)" >> $DEPLOY_LOG
-            
-            # Create a symlink to the latest deployment log
+            echo "Deployment completed at $(date)" >> $DEPLOY_LOG
             ln -sf $DEPLOY_LOG "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_deploy.log"
-  
-  # Verification job
-  verify:
-    name: ✅ Verify Deployment
-    needs: [deploy, select_workflow]
-    runs-on: ubuntu-latest
-    environment: ${{ needs.select_workflow.outputs.environment }}
-    
-    steps:
-      - name: 🔑 Set up SSH
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: 🔐 Add host key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      
-      - name: 🔍 Check deployment status
-        id: check_status
+      - name: ✅ Verify deployment
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             
-            # Set domain name
-            DOMAIN="${{ secrets.VPN_DOMAIN || 'service.foodshare.club' }}"
-            
-            # Create verification log
+            # Setup variables
+            DOMAIN="${{ secrets.VPN_DOMAIN || env.DEFAULT_DOMAIN }}"
             TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
             VERIFY_LOG="${{ secrets.DEPLOY_PATH }}/workflow_logs/verify_${TIMESTAMP}.log"
             
-            echo "Verification started at $(date)" >> $VERIFY_LOG
+            echo "Verification started at $(date)" > $VERIFY_LOG
             echo "Domain: ${DOMAIN}" >> $VERIFY_LOG
             
-            # Wait for service to stabilize
+            # Wait for container to stabilize
             echo "Waiting for service to stabilize..." >> $VERIFY_LOG
             sleep 30
             
-            # Check if container is running
+            # Check container status
             echo "Container status:" >> $VERIFY_LOG
             docker-compose ps >> $VERIFY_LOG 2>&1
             
-            # Check if container is healthy
-            echo "Container health check:" >> $VERIFY_LOG
+            # Check container health
             CONTAINER_STATUS=$(docker inspect --format='{{.State.Health.Status}}' 3x-ui 2>/dev/null || echo "Container not found")
             echo "Health status: $CONTAINER_STATUS" >> $VERIFY_LOG
             
-            # Get detailed logs for troubleshooting if needed
+            # Check services
+            echo "Checking service endpoints:" >> $VERIFY_LOG
+            curl -s -o /dev/null -w "Admin panel: HTTP %{http_code}\n" http://localhost:54321/login >> $VERIFY_LOG 2>&1 || echo "Failed to connect to admin panel" >> $VERIFY_LOG
+            curl -s -o /dev/null -w "HTTPS: %{http_code}\n" -k https://${DOMAIN} >> $VERIFY_LOG 2>&1 || echo "Failed to connect to domain" >> $VERIFY_LOG
+            curl -s -o /dev/null -w "VPN panel: %{http_code}\n" -k https://${DOMAIN}:2053/BXv8SI7gBe/ >> $VERIFY_LOG 2>&1 || echo "Failed to connect to VPN panel" >> $VERIFY_LOG
+            
+            # Log container logs
             echo "Container logs:" >> $VERIFY_LOG
             docker-compose logs --tail=50 >> $VERIFY_LOG 2>&1
             
-            # Check if services are accessible
-            echo "Checking if admin panel is accessible:" >> $VERIFY_LOG
-            curl -s -o /dev/null -w "%{http_code}" http://localhost:54321/login >> $VERIFY_LOG 2>&1 || echo "Failed to connect to admin panel" >> $VERIFY_LOG
-            
-            # Check if domain is accessible
-            echo "Checking if domain ${DOMAIN} is accessible:" >> $VERIFY_LOG
-            curl -s -o /dev/null -w "%{http_code}" -k https://${DOMAIN} >> $VERIFY_LOG 2>&1 || echo "Failed to connect to domain" >> $VERIFY_LOG
-            
-            # Check if VPN panel URL is accessible
-            echo "Checking if VPN panel URL is accessible:" >> $VERIFY_LOG
-            curl -s -o /dev/null -w "%{http_code}" -k https://${DOMAIN}:2053/BXv8SI7gBe/ >> $VERIFY_LOG 2>&1 || echo "Failed to connect to VPN panel" >> $VERIFY_LOG
-            
-            # Output verification summary
             echo "Verification completed at $(date)" >> $VERIFY_LOG
-            
-            # Create a symlink to the latest verification log
             ln -sf $VERIFY_LOG "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_verify.log"
             
-            # Evaluate if deployment was successful
+            # Check deployment success
             if [[ "$CONTAINER_STATUS" = "healthy" ]]; then
-              echo "✅ Deployment verification successful! Container is healthy."
+              echo "✅ Deployment successful! Container is healthy."
               exit 0
             else
               echo "❌ Deployment verification failed. Container status: $CONTAINER_STATUS"
@@ -530,9 +313,8 @@ jobs:
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_*.log"
-          target: "./workflow_logs"
+          source: ${{ secrets.DEPLOY_PATH }}/workflow_logs/latest_*.log
+          target: ./workflow_logs
           strip_components: 2
       
       - name: 📦 Archive logs
@@ -541,40 +323,4 @@ jobs:
         with:
           name: deployment-logs
           path: ./workflow_logs/
-          retention-days: 7
-
-  # Secret Management job (manual trigger only)
-  manage_secrets:
-    name: 🔐 Manage Repository Secrets
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.workflow_type == 'manage_secrets'
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 🔑 Set up GitHub CLI
-        run: |
-          # Install GitHub CLI if needed (already available in GitHub Actions)
-          if ! command -v gh &> /dev/null; then
-            echo "Installing GitHub CLI..."
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt update
-            sudo apt install gh
-          fi
-      
-      - name: 📋 List current secrets
-        id: list_secrets
-        run: |
-          echo "Current repository secrets:"
-          gh api repos/${{ github.repository }}/actions/secrets --silent | jq -r '.secrets[].name' 2>/dev/null || echo "No secrets found or failed to retrieve"
-          
-          echo "Required secrets for this workflow:"
-          echo "- SSH_PRIVATE_KEY: SSH private key for accessing the server"
-          echo "- SSH_KNOWN_HOSTS: SSH known hosts file contents"
-          echo "- SERVER_HOST: Server hostname or IP address"
-          echo "- SERVER_USER: Username for SSH connection"
-          echo "- DEPLOY_PATH: Path to deploy the application on the server"
-          echo "- VPN_DOMAIN: Domain name for the VPN service (default: service.foodshare.club)"
-          echo "- ADMIN_EMAIL: Email address for Let's Encrypt certificate (for SSL notifications)" 
+          retention-days: 7 
