@@ -16,6 +16,7 @@ on:
         options:
           - setup
           - deploy
+          - manage_secrets
       environment:
         description: 'Environment to target'
         required: true
@@ -72,7 +73,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: 🔑 Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -172,7 +173,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: 🧰 Validate Docker Compose
         run: |
@@ -201,7 +202,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: 🔑 Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -353,8 +354,35 @@ jobs:
       
       - name: 📦 Archive logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-logs
           path: ./workflow_logs/
-          retention-days: 7 
+          retention-days: 7
+
+  # Secret Management job (manual trigger only)
+  manage_secrets:
+    name: 🔐 Manage Repository Secrets
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.workflow_type == 'manage_secrets'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔑 Set up GitHub CLI
+        run: |
+          # Install GitHub CLI if needed (already available in GitHub Actions)
+          if ! command -v gh &> /dev/null; then
+            echo "Installing GitHub CLI..."
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update
+            sudo apt install gh
+          fi
+      
+      - name: 📋 List current secrets
+        id: list_secrets
+        run: |
+          echo "Current repository secrets:"
+          gh api repos/${{ github.repository }}/actions/secrets --silent | jq -r '.secrets[].name' 2>/dev/null || echo "No secrets found or failed to retrieve" 
