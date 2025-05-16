@@ -81,7 +81,7 @@ COMMIT_MESSAGE="${TYPE}(${SCOPE}): ${DESCRIPTION}"
 echo -e "\nCommit message: $COMMIT_MESSAGE"
 echo -e "Proceeding with commit automatically..."
 
-# Perform commi
+# Perform commit
 git commit -m "$COMMIT_MESSAGE"
 
 # Push changes
