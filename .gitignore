@@ -1,0 +1,59 @@
+# Database files
+*.db
+*.db-journal
+!x-ui.db  # Include the empty template database
+
+# Backup files
+backups/
+*.backup*
+*.bak
+*.gz
+*.zip
+*.tar
+*.tgz
+
+# Certificate files
+cert/
+*.pem
+*.key
+*.crt
+*.cer
+*.ca-bundle
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Environment variables
+.env
+.env.*
+
+# Docker volumes
+volumes/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Dependency directories
+node_modules/
+vendor/
+
+# Build output
+dist/
+build/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Historical files
+.history/
+
+# Local configuration that shouldn't be in git
+docker-compose.override.yml 

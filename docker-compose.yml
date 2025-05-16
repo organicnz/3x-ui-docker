@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  3x-ui:
+    image: mhsanaei/3x-ui:latest
+    container_name: 3x-ui
+    restart: unless-stopped
+    ports:
+      - "54321:54321"  # Admin panel
+      - "443:443"      # HTTPS
+      # Add any other ports your VPN protocols require
+      # - "port:port"
+    volumes:
+      # Mount the local x-ui.db file for persistence
+      - ./x-ui.db:/etc/x-ui/x-ui.db
+      # Mount certificates directory
+      - ./cert:/root/cert
+      # Mount logs directory
+      - ./logs:/var/log/x-ui
+    environment:
+      - XRAY_VMESS_AEAD_FORCED=false
+      # Add any other environment variables needed
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:54321/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - vpn-network
+    # Use host network mode if you have issues with port mapping (optional)
+    # network_mode: "host"
+
+networks:
+  vpn-network:
+    driver: bridge
+
+# If you want to use named volumes instead of local bind mounts
+# volumes:
+#   x-ui-data:
+#     driver: local 
