@@ -1,43 +1,29 @@
 # SSL Certificates for service.foodshare.club
 
-This directory will store SSL certificates for your service.foodshare.club domain. The certificates are automatically managed using Certbot and Let's Encrypt.
+This directory is maintained for compatibility with the 3x-ui service configuration. The SSL certificates are now managed by your existing Caddy server instead of NGINX/Certbot.
 
-## Automated Certificate Management
+## Certificate Management with Caddy
 
-The Docker Compose configuration now includes:
+Caddy automatically handles SSL certificate issuance and renewal through Let's Encrypt using Cloudflare DNS validation. The configuration for this is already set up in your Caddy configuration.
 
-1. A Certbot container that automatically obtains and renews SSL certificates
-2. An NGINX container that handles SSL termination and proxies requests to the 3x-ui service
+## Integration with 3x-ui
 
-## Certificate Structure
+The 3x-ui service is configured to connect to your Caddy service via Docker networks:
+- `web` - Main network for web traffic
+- `no-zero-trust-cloudflared` - Network for services outside Cloudflare Zero Trust
 
-After running the stack, the following files will be automatically generated:
+## Caddy Configuration
 
-- `live/service.foodshare.club/fullchain.pem` - The full certificate chain file
-- `live/service.foodshare.club/privkey.pem` - The private key file
-
-These files are referenced by the NGINX configuration and will be used for SSL termination.
-
-## Manual Certificate Management (If Needed)
-
-If you need to manually manage certificates:
-
-```bash
-# Using Certbot manually
-docker-compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot \
-  --email admin@foodshare.club --agree-tos --no-eff-email \
-  --force-renewal -d service.foodshare.club
-```
-
-## Certificate Renewal
-
-Certificates from Let's Encrypt are valid for 90 days. The NGINX configuration includes automatic reload every 6 hours to pick up renewed certificates.
+See the `docs/caddy-config.md` file for detailed Caddy configuration instructions to properly proxy traffic to the 3x-ui service.
 
 ## Troubleshooting
 
 If you encounter certificate validation errors:
 
 1. Check that the domain is properly pointing to your server's IP address
-2. Verify that ports 80 and 443 are open in your firewall
-3. Check the Certbot logs: `docker-compose logs certbot`
-4. Check the NGINX logs: `docker-compose logs nginx` 
+2. Verify that your Cloudflare API token has the necessary permissions
+3. Check Caddy logs for certificate issuance errors:
+   ```bash
+   docker-compose logs caddy | grep -i cert
+   ```
+4. Ensure your 3x-ui service is properly connected to the Caddy Docker networks 
