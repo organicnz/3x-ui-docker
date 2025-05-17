@@ -225,6 +225,13 @@ jobs:
         run: |
           echo "No logs available." > dummy.log
           scp -o StrictHostKeyChecking=no dummy.log ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_PATH }}/logs/dummy.log
+      - name: Debug: List logs directory on server before SCP
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
+            cd ${{ secrets.DEPLOY_PATH }}
+            echo "Listing logs directory before SCP:"
+            ls -l logs
+          '
       - name: Collect Logs
         uses: appleboy/scp-action@master
         with:
