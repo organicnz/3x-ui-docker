@@ -205,10 +205,12 @@ jobs:
             cd ${{ secrets.DEPLOY_PATH }}
             mkdir -p logs
             sudo chown $USER:$USER logs
-            sudo chmod u+w logs
+            sudo chmod 777 logs
             if [ -z "$(ls -A logs)" ]; then
               echo "No logs found, creating dummy.log"
-              sudo bash -c "echo 'No logs available.' | tee logs/dummy.log"
+              sudo touch logs/dummy.log
+              sudo chmod 666 logs/dummy.log
+              echo "No logs available." | sudo tee logs/dummy.log
             fi
             echo "Contents of logs directory after ensuring dummy.log:"
             ls -l logs
