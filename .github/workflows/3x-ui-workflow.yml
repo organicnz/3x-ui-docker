@@ -5,6 +5,15 @@ name: 3x-ui VPN Service Management
 
 on:
   workflow_dispatch:
+    inputs:
+      run_cert_fix_only:
+        description: 'Run only the certificate fix job'
+        type: boolean
+        default: false
+      environment:
+        description: 'Environment to deploy to'
+        type: string
+        default: 'production'
   push:
     branches:
       - main
@@ -20,6 +29,7 @@ jobs:
   debug_info:
     name: 🐛 Debug Workflow Info
     runs-on: ubuntu-latest
+    if: ${{ !inputs.run_cert_fix_only }}
     env:
       GH_EVENT_NAME: ${{ github.event_name }}
       GH_REF_NAME: ${{ github.ref_name }}
@@ -37,9 +47,75 @@ jobs:
           echo "Ref type: $GH_REF_TYPE"
           echo "Repository: $GH_REPOSITORY"
 
+  cert_fix:
+    name: 🚑 Emergency Certificate Fix
+    runs-on: ubuntu-latest
+    # This job can run either as part of the workflow or on its own
+    steps:
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Add to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+      - name: Fix SSL Certificates
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
+            set -ex  # Enable verbose logging and exit on errors
+            
+            # Define variables
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            DOMAIN="${{ secrets.VPN_DOMAIN }}"
+            CERT_DIR="$DEPLOY_PATH/cert/$DOMAIN"
+            
+            echo "🔍 Checking current container status..."
+            cd "$DEPLOY_PATH"
+            docker-compose ps
+            
+            echo "📁 Creating certificate directory..."
+            mkdir -p "$CERT_DIR"
+            
+            echo "🔑 Creating self-signed certificates..."
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -keyout "$CERT_DIR/privkey.pem" \
+              -out "$CERT_DIR/fullchain.pem" \
+              -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
+              -addext "subjectAltName=DNS:$DOMAIN"
+            
+            echo "🔒 Setting permissions..."
+            chmod 644 "$CERT_DIR/fullchain.pem"
+            chmod 600 "$CERT_DIR/privkey.pem"
+            
+            echo "🔄 Restarting 3x-ui container..."
+            docker-compose restart 3x-ui
+            
+            echo "✅ Certificate fix complete!"
+            echo "📋 Container status after fix:"
+            docker-compose ps
+            
+            echo "📋 Certificate details:"
+            openssl x509 -noout -text -in "$CERT_DIR/fullchain.pem" | grep -E "Subject:|Issuer:|Not Before:|Not After :|DNS:"
+            
+            echo "📋 Container logs (last 10 lines):"
+            sleep 5  # Give the container time to start
+            docker-compose logs --tail=10 3x-ui
+          EOL
+      - name: Add to workflow summary
+        run: |
+          echo "# 🚑 Certificate Emergency Fix" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Emergency certificate fix was applied to ensure the service has valid SSL certificates." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "For production use, consider running the full workflow to acquire proper Let's Encrypt certificates." >> $GITHUB_STEP_SUMMARY
+
   validate:
     name: 🔍 Validate Configuration
     runs-on: ubuntu-latest
+    if: ${{ !inputs.run_cert_fix_only }}
+    needs: debug_info
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -58,6 +134,7 @@ jobs:
     name: 🚀 Setup Server
     needs: validate
     runs-on: ubuntu-latest
+    if: ${{ !inputs.run_cert_fix_only }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -166,6 +243,7 @@ jobs:
     name: 🔒 Setup SSL Certificates
     needs: setup
     runs-on: ubuntu-latest
+    if: ${{ !inputs.run_cert_fix_only }}
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -270,6 +348,7 @@ jobs:
     name: 🚢 Deploy VPN Service
     needs: [setup, certificates]
     runs-on: ubuntu-latest
+    if: ${{ !inputs.run_cert_fix_only }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -433,6 +512,7 @@ jobs:
     name: ✅ Verify Deployment
     needs: deploy
     runs-on: ubuntu-latest
+    if: ${{ !inputs.run_cert_fix_only }}
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -489,7 +569,7 @@ jobs:
   logs:
     name: 📊 Collect Logs
     needs: [deploy, verify]
-    if: always()
+    if: always() && !inputs.run_cert_fix_only
     runs-on: ubuntu-latest
     steps:
       - name: Set up SSH
@@ -564,7 +644,7 @@ jobs:
 
   summary:
     name: 🎉 Deployment Summary
-    needs: [debug_info, validate, setup, certificates, deploy, verify, logs]
+    needs: [debug_info, validate, setup, certificates, deploy, verify, logs, cert_fix]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -572,14 +652,26 @@ jobs:
         run: |
           echo "# 3x-ui VPN Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Configuration Validation**: See validate job" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **SSH Setup**: See setup job" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Deployment**: See deploy job" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Verification**: See verify job" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Logs**: See logs job" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ inputs.run_cert_fix_only }}" == "true" ]]; then
+            echo "✅ **Certificate Fix**: Emergency fix applied" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Debug Info**: See debug_info job" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Configuration Validation**: See validate job" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **SSH Setup**: See setup job" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **SSL Certificates**: See certificates job" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Deployment**: See deploy job" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Verification**: See verify job" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Logs**: See logs job" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Access Information" >> $GITHUB_STEP_SUMMARY
           echo "🔗 **Admin Panel**: https://${{ secrets.VPN_DOMAIN }}:54321/" >> $GITHUB_STEP_SUMMARY
       - name: Output Result
         run: |
-          echo "✅ 3x-ui VPN deployment workflow completed." 
+          if [[ "${{ inputs.run_cert_fix_only }}" == "true" ]]; then
+            echo "✅ 3x-ui VPN certificate fix completed."
+          else
+            echo "✅ 3x-ui VPN deployment workflow completed."
+          fi 
