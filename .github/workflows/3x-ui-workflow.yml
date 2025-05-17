@@ -138,6 +138,16 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Ensure logs directory is not empty
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
+            cd ${{ secrets.DEPLOY_PATH }}
+            mkdir -p logs
+            if [ -z "$(ls -A logs)" ]; then
+              echo "No logs found, creating dummy.log"
+              echo "No logs available." > logs/dummy.log
+            fi
+          '
       - name: Collect Logs
         uses: appleboy/scp-action@master
         with:
