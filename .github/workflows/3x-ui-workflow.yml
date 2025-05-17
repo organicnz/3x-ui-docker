@@ -98,7 +98,17 @@ jobs:
           '
       - name: Remove existing x-ui.db on server (if any)
         run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} 'rm -f ${{ secrets.DEPLOY_PATH }}/x-ui.db'
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
+            if [ -d "${{ secrets.DEPLOY_PATH }}/x-ui.db" ]; then
+              rm -rf "${{ secrets.DEPLOY_PATH }}/x-ui.db"
+              echo "Removed directory x-ui.db"
+            elif [ -f "${{ secrets.DEPLOY_PATH }}/x-ui.db" ]; then
+              rm -f "${{ secrets.DEPLOY_PATH }}/x-ui.db"
+              echo "Removed file x-ui.db"
+            else
+              echo "No x-ui.db file or directory to remove"
+            fi
+          '
       - name: Copy x-ui.db to server
         uses: appleboy/scp-action@master
         with:
@@ -193,6 +203,8 @@ jobs:
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
             cd ${{ secrets.DEPLOY_PATH }}
             mkdir -p logs
+            sudo chown $USER:$USER logs
+            sudo chmod u+w logs
             if [ -z "$(ls -A logs)" ]; then
               echo "No logs found, creating dummy.log"
               echo "No logs available." > logs/dummy.log
