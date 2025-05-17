@@ -76,57 +76,72 @@ jobs:
           EOL
       - name: Initialize Git repository on server
         run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
-            # Check if deploy path exists
-            if [ -d '${{ secrets.DEPLOY_PATH }}' ]; then
-              echo 'Deploy directory exists'
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
+            set -ex  # Enable verbose logging and exit on error
+            
+            # Define deploy path
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+            
+            echo "Current working directory: $(pwd)"
+            echo "Checking if $DEPLOY_PATH exists..."
+            
+            # Check if the directory exists
+            if [ -d "$DEPLOY_PATH" ]; then
+              echo "Directory $DEPLOY_PATH exists"
+              cd "$DEPLOY_PATH"
               
-              # Check if it's a git repository with commits
-              if [ -d '${{ secrets.DEPLOY_PATH }}/.git' ]; then
-                cd ${{ secrets.DEPLOY_PATH }}
+              # Check if it's a git repository
+              if [ -d ".git" ]; then
+                echo "Git repository exists in $DEPLOY_PATH"
                 
-                # Check if there are any commits
-                if git rev-parse --verify HEAD >/dev/null 2>&1; then
-                  echo 'Git repository has commits, updating remote'
-                  git remote set-url origin https://github.com/${{ github.repository }}.git
-                  git fetch origin
-                else
-                  echo 'Git repository exists but has no commits'
-                  # Backup any important files
-                  mkdir -p /tmp/3x-ui-backup
-                  cp -r .env* db/* logs/* /tmp/3x-ui-backup/ 2>/dev/null || true
-                  
-                  # Remove the directory and clone fresh
+                # Reset repository to ensure it works
+                git status || {
+                  echo "Git status failed, recreating repository"
                   cd ..
-                  rm -rf $(basename '${{ secrets.DEPLOY_PATH }}')
-                  git clone https://github.com/${{ github.repository }}.git $(basename '${{ secrets.DEPLOY_PATH }}')
-                  
-                  # Restore important files
-                  cd ${{ secrets.DEPLOY_PATH }}
-                  mkdir -p db logs
-                  cp -r /tmp/3x-ui-backup/* . 2>/dev/null || true
-                fi
+                  rm -rf "$(basename "$DEPLOY_PATH")"
+                  git clone "$REPO_URL" "$(basename "$DEPLOY_PATH")"
+                  cd "$DEPLOY_PATH"
+                }
               else
-                echo 'Directory exists but is not a git repo, backing up and cloning'
-                # Backup existing directory
-                mkdir -p /tmp/3x-ui-backup
-                cp -r ${{ secrets.DEPLOY_PATH }}/.env* ${{ secrets.DEPLOY_PATH }}/db/* ${{ secrets.DEPLOY_PATH }}/logs/* /tmp/3x-ui-backup/ 2>/dev/null || true
+                echo "Directory exists but not a git repository"
+                # Backup existing files
+                BACKUP_DIR="/tmp/3x-ui-backup-$(date +%s)"
+                mkdir -p "$BACKUP_DIR"
+                find . -type f -name ".env*" -exec cp --parents {} "$BACKUP_DIR/" \;
+                find . -type f -path "./db/*" -exec cp --parents {} "$BACKUP_DIR/" \;
+                find . -type f -path "./logs/*" -exec cp --parents {} "$BACKUP_DIR/" \;
                 
-                # Remove and clone fresh
-                rm -rf ${{ secrets.DEPLOY_PATH }}
-                git clone https://github.com/${{ github.repository }}.git ${{ secrets.DEPLOY_PATH }}
+                # Convert to git repository
+                cd ..
+                mv "$(basename "$DEPLOY_PATH")" "${DEPLOY_PATH}_old"
+                git clone "$REPO_URL" "$(basename "$DEPLOY_PATH")"
+                cd "$DEPLOY_PATH"
                 
-                # Restore important files
-                cd ${{ secrets.DEPLOY_PATH }}
-                mkdir -p db logs
-                cp -r /tmp/3x-ui-backup/* . 2>/dev/null || true
+                # Restore backed up files
+                if [ -d "$BACKUP_DIR" ]; then
+                  cp -r "$BACKUP_DIR"/* ./ 2>/dev/null || true
+                fi
               fi
             else
-              echo 'Deploy directory does not exist, cloning fresh'
-              mkdir -p $(dirname '${{ secrets.DEPLOY_PATH }}')
-              git clone https://github.com/${{ github.repository }}.git ${{ secrets.DEPLOY_PATH }}
+              echo "Directory $DEPLOY_PATH does not exist, creating and cloning repository"
+              # Create parent directory if needed
+              mkdir -p "$(dirname "$DEPLOY_PATH")"
+              
+              # Clone repository
+              git clone "$REPO_URL" "$DEPLOY_PATH"
+              cd "$DEPLOY_PATH"
             fi
-          "
+            
+            # Verify repository setup
+            echo "Current directory: $(pwd)"
+            echo "Repository content:"
+            ls -la
+            echo "Git status:"
+            git status
+            echo "Latest commits:"
+            git log -n 3 --oneline || echo "No commits yet"
+          EOL
       - name: Install Docker if not installed
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
@@ -165,19 +180,48 @@ jobs:
       - name: Deploy from Git
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
-            cd ${{ secrets.DEPLOY_PATH }}
+            set -ex  # Enable verbose logging and exit on error
+            
+            # Define deploy path
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+            
+            echo "Current directory: $(pwd)"
+            echo "Deploying to: $DEPLOY_PATH"
+            
+            # Ensure we're in the right directory
+            cd "$DEPLOY_PATH" || {
+              echo "ERROR: Unable to cd to $DEPLOY_PATH"
+              exit 1
+            }
+            
+            echo "Current directory after cd: $(pwd)"
+            echo "Repository content before pulling:"
+            ls -la
             
             # Make sure we're on the main branch
             git checkout main || git checkout -b main
             
-            # Pull the latest code (should work now if repository was cloned)
+            # Pull the latest code
+            echo "Pulling latest code from $REPO_URL"
             git fetch origin
             git reset --hard origin/main
             
+            echo "Repository content after pulling:"
+            ls -la
+            
             # Create .env from template if it doesn't exist
             if [ ! -f .env ]; then
-              cp .env.example .env
-              echo 'Created .env file from template. Please update with your settings.'
+              if [ -f .env.example ]; then
+                cp .env.example .env
+                echo "Created .env file from .env.example"
+              elif [ -f env.local.example ]; then
+                cp env.local.example .env
+                echo "Created .env file from env.local.example"
+              else
+                echo "WARNING: No template file found for .env"
+                touch .env
+              fi
             fi
             
             # Make sure directories exist
@@ -196,18 +240,62 @@ jobs:
               echo "This is a placeholder database file. It was created by the workflow because db/x-ui.db was missing." > db/x-ui.db
             fi
             
+            # Check if docker-compose.yml exists
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "ERROR: docker-compose.yml not found!"
+              exit 1
+            fi
+            
             # Start containers
+            echo "Starting containers with docker-compose"
             docker-compose pull
             docker-compose up -d
+            
+            echo "Deployment completed, checking container status:"
+            docker-compose ps
           EOL
       - name: Verify deployment
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
-            cd ${{ secrets.DEPLOY_PATH }}
-            echo 'Listing deployed files:'
-            ls -la
-            echo 'Listing docker containers:'
+            set -ex  # Enable verbose logging and exit on error
+            
+            # Define deploy path
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            
+            echo "Verifying deployment in $DEPLOY_PATH"
+            cd "$DEPLOY_PATH" || {
+              echo "ERROR: Unable to cd to $DEPLOY_PATH"
+              exit 1
+            }
+            
+            echo "Directory structure:"
+            find . -type d -maxdepth 2 | sort
+            
+            echo "Critical files:"
+            ls -la docker-compose.yml .env* db/ 2>/dev/null || echo "Some files may be missing"
+            
+            echo "Container status:"
             docker-compose ps
+            
+            echo "Running containers:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            
+            echo "Container logs (last 10 lines):"
+            docker-compose logs --tail=10
+            
+            echo "Checking if 3x-ui container is running:"
+            if docker ps | grep -q '3x-ui'; then
+              echo "✅ 3x-ui container is running"
+            else
+              echo "❌ 3x-ui container is NOT running!"
+              echo "Container details:"
+              docker ps -a | grep 3x-ui || echo "No container found"
+              echo "Container logs:"
+              docker-compose logs 3x-ui
+              exit 1
+            fi
+            
+            echo "✅ Deployment verification completed successfully"
           EOL
 
   verify:
@@ -223,19 +311,49 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      - name: Check service health
+      - name: Verify deployment
         run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
-          cd ${{ secrets.DEPLOY_PATH }}
-          if docker-compose ps | grep -q '3x-ui'; then
-            echo '✅ 3x-ui container is running'
-            docker ps --filter name=3x-ui --format '{{.Status}}'
-          else
-            echo '❌ 3x-ui container is not running!'
-            docker-compose logs
-            exit 1
-          fi
-          "
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
+            set -ex  # Enable verbose logging and exit on error
+            
+            # Define deploy path
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            
+            echo "Verifying deployment in $DEPLOY_PATH"
+            cd "$DEPLOY_PATH" || {
+              echo "ERROR: Unable to cd to $DEPLOY_PATH"
+              exit 1
+            }
+            
+            echo "Directory structure:"
+            find . -type d -maxdepth 2 | sort
+            
+            echo "Critical files:"
+            ls -la docker-compose.yml .env* db/ 2>/dev/null || echo "Some files may be missing"
+            
+            echo "Container status:"
+            docker-compose ps
+            
+            echo "Running containers:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            
+            echo "Container logs (last 10 lines):"
+            docker-compose logs --tail=10
+            
+            echo "Checking if 3x-ui container is running:"
+            if docker ps | grep -q '3x-ui'; then
+              echo "✅ 3x-ui container is running"
+            else
+              echo "❌ 3x-ui container is NOT running!"
+              echo "Container details:"
+              docker ps -a | grep 3x-ui || echo "No container found"
+              echo "Container logs:"
+              docker-compose logs 3x-ui
+              exit 1
+            fi
+            
+            echo "✅ Deployment verification completed successfully"
+          EOL
 
   logs:
     name: 📊 Collect Logs
