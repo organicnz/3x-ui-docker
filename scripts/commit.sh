@@ -10,14 +10,21 @@ NC='\033[0m' # No Color
 # Define valid commit types
 VALID_TYPES=("Feat" "Fix" "Docs" "Refactor" "Style" "Test" "Chore")
 
+# Default settings
+AUTO_CONFIRM=false
+
 # Function to display usage
 function show_help {
   echo -e "${BLUE}Usage:${NC}"
-  echo -e "  $0 \"message\" \"type\""
+  echo -e "  $0 [options] \"message\" \"type\""
   echo -e ""
   echo -e "${BLUE}Arguments:${NC}"
   echo -e "  message    Commit message (required)"
   echo -e "  type       Commit type (e.g., Feat, Fix, Docs, etc.) (required)"
+  echo -e ""
+  echo -e "${BLUE}Options:${NC}"
+  echo -e "  -h, --help     Show this help message"
+  echo -e "  -y, --yes      Skip confirmation prompt and automatically commit"
   echo -e ""
   echo -e "${BLUE}Valid types:${NC}"
   for type in "${VALID_TYPES[@]}"; do
@@ -26,7 +33,7 @@ function show_help {
   echo -e ""
   echo -e "${BLUE}Examples:${NC}"
   echo -e "  $0 \"add dark mode toggle\" \"Feat\""
-  echo -e "  $0 \"fix user authentication bug\" \"Fix\""
+  echo -e "  $0 -y \"fix user authentication bug\" \"Fix\""
   echo -e ""
 }
 
@@ -77,11 +84,23 @@ function validate_type {
   return 1
 }
 
-# Parse command line arguments
-if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
-  show_help
-  exit 0
-fi
+# Parse command line options
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    -y|--yes)
+      AUTO_CONFIRM=true
+      shift
+      ;;
+    *)
+      # Break once we hit non-option arguments
+      break
+      ;;
+  esac
+done
 
 # Interactive mode if no arguments provided
 if [ $# -eq 0 ]; then
@@ -140,14 +159,16 @@ scope=$(detect_scope)
 # Format the commit message
 formatted_message="${commit_type}(${scope}): ${commit_message}"
 
-# Confirm the commit message
+# Confirm the commit message (unless --yes flag was provided)
 echo -e "${BLUE}Commit message will be:${NC} ${formatted_message}"
-echo -e "${YELLOW}Proceed with commit? (y/n)${NC}"
-read -r confirm
-
-if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-  echo -e "${RED}Commit aborted.${NC}"
-  exit 0
+if [ "$AUTO_CONFIRM" = false ]; then
+  echo -e "${YELLOW}Proceed with commit? (y/n)${NC}"
+  read -r confirm
+  
+  if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+    echo -e "${RED}Commit aborted.${NC}"
+    exit 0
+  fi
 fi
 
 # Execute the commit
