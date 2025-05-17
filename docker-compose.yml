@@ -13,8 +13,8 @@ services:
       # Add any other ports your VPN protocols require
       # - port:port
     volumes:
-      # Mount the local x-ui.db file for persistence
-      - ./db/x-ui.db:/etc/x-ui/x-ui.db
+      # Mount the db directory for persistence
+      - ./db:/etc/x-ui
       # Mount certificates directory
       - ./cert:/root/cert
       # Mount logs directory

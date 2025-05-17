@@ -181,6 +181,19 @@ jobs:
             # Make sure directories exist
             mkdir -p db cert logs
             
+            # Ensure db/x-ui.db is a file, not a directory
+            if [ -d "db/x-ui.db" ]; then
+              echo "db/x-ui.db is a directory, fixing..."
+              rm -rf db/x-ui.db
+              touch db/x-ui.db
+              echo "This is a placeholder database file. It was created by the workflow because db/x-ui.db was incorrectly a directory." > db/x-ui.db
+              echo "Fixed db/x-ui.db"
+            elif [ ! -f "db/x-ui.db" ]; then
+              echo "db/x-ui.db doesn't exist, creating placeholder..."
+              touch db/x-ui.db
+              echo "This is a placeholder database file. It was created by the workflow because db/x-ui.db was missing." > db/x-ui.db
+            fi
+            
             # Start containers
             docker-compose pull
             docker-compose up -d
