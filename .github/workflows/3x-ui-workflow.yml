@@ -1,3 +1,6 @@
+permissions:
+  contents: read
+
 name: 3x-ui VPN Service Management
 
 on:
@@ -29,6 +32,7 @@ jobs:
           cat docker-compose.yml | python3 -c "import sys, yaml; yaml.safe_load(sys.stdin)" && echo "✅ Valid YAML"
           grep -q "3x-ui:" docker-compose.yml && echo "✅ 3x-ui service found"
           grep -q "54321:54321" docker-compose.yml && echo "✅ Admin panel port (54321) configured"
+          grep -q ":443" docker-compose.yml && echo "✅ HTTPS port mapping (:443) configured"
 
   setup:
     name: 🚀 Setup Server
