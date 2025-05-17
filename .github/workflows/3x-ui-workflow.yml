@@ -90,6 +90,9 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+      - name: Remove existing x-ui.db on server (if any)
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} 'rm -f ${{ secrets.DEPLOY_PATH }}/x-ui.db'
       - name: Copy x-ui.db to server
         uses: appleboy/scp-action@master
         with:
