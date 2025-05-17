@@ -75,27 +75,55 @@ jobs:
       - name: Initialize Git repository on server
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
-            # Ensure the deploy directory exists
-            mkdir -p ${{ secrets.DEPLOY_PATH }}
-            cd ${{ secrets.DEPLOY_PATH }}
-            
-            # Check if this is already a git repository
-            if [ ! -d '.git' ]; then
-              echo 'Initializing new Git repository...'
-              # Initialize a new Git repository
-              git init
-              # Add the GitHub repository as the origin
-              git remote add origin https://github.com/${{ github.repository }}.git
-              echo 'Git repository initialized.'
+            # Check if deploy path exists
+            if [ -d '${{ secrets.DEPLOY_PATH }}' ]; then
+              echo 'Deploy directory exists'
+              
+              # Check if it's a git repository with commits
+              if [ -d '${{ secrets.DEPLOY_PATH }}/.git' ]; then
+                cd ${{ secrets.DEPLOY_PATH }}
+                
+                # Check if there are any commits
+                if git rev-parse --verify HEAD >/dev/null 2>&1; then
+                  echo 'Git repository has commits, updating remote'
+                  git remote set-url origin https://github.com/${{ github.repository }}.git
+                  git fetch origin
+                else
+                  echo 'Git repository exists but has no commits'
+                  # Backup any important files
+                  mkdir -p /tmp/3x-ui-backup
+                  cp -r .env* db/* logs/* /tmp/3x-ui-backup/ 2>/dev/null || true
+                  
+                  # Remove the directory and clone fresh
+                  cd ..
+                  rm -rf $(basename '${{ secrets.DEPLOY_PATH }}')
+                  git clone https://github.com/${{ github.repository }}.git $(basename '${{ secrets.DEPLOY_PATH }}')
+                  
+                  # Restore important files
+                  cd ${{ secrets.DEPLOY_PATH }}
+                  mkdir -p db logs
+                  cp -r /tmp/3x-ui-backup/* . 2>/dev/null || true
+                fi
+              else
+                echo 'Directory exists but is not a git repo, backing up and cloning'
+                # Backup existing directory
+                mkdir -p /tmp/3x-ui-backup
+                cp -r ${{ secrets.DEPLOY_PATH }}/.env* ${{ secrets.DEPLOY_PATH }}/db/* ${{ secrets.DEPLOY_PATH }}/logs/* /tmp/3x-ui-backup/ 2>/dev/null || true
+                
+                # Remove and clone fresh
+                rm -rf ${{ secrets.DEPLOY_PATH }}
+                git clone https://github.com/${{ github.repository }}.git ${{ secrets.DEPLOY_PATH }}
+                
+                # Restore important files
+                cd ${{ secrets.DEPLOY_PATH }}
+                mkdir -p db logs
+                cp -r /tmp/3x-ui-backup/* . 2>/dev/null || true
+              fi
             else
-              echo 'Git repository already initialized.'
-              # Update remote URL in case it changed
-              git remote set-url origin https://github.com/${{ github.repository }}.git
+              echo 'Deploy directory does not exist, cloning fresh'
+              mkdir -p $(dirname '${{ secrets.DEPLOY_PATH }}')
+              git clone https://github.com/${{ github.repository }}.git ${{ secrets.DEPLOY_PATH }}
             fi
-            
-            # Fetch the latest code but don't merge yet (we'll do that in the deploy step)
-            git fetch origin
-            echo 'Fetched latest code from GitHub.'
           "
       - name: Install Docker if not installed
         run: |
@@ -203,12 +231,12 @@ jobs:
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
             cd ${{ secrets.DEPLOY_PATH }}
             
-            # Stash any local changes
-            git stash
-            
-            # Checkout the latest code from the main branch
+            # Make sure we're on the main branch
             git checkout main || git checkout -b main
-            git pull origin main
+            
+            # Pull the latest code (should work now if repository was cloned)
+            git fetch origin
+            git reset --hard origin/main
             
             # Create .env from template if it doesn't exist
             if [ ! -f .env ]; then
