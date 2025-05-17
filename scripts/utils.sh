@@ -10,7 +10,7 @@ export BLUE='\033[0;34m'
 export CYAN='\033[0;36m'
 export NC='\033[0m' # No Color
 
-# Default values
+# Fallback defaults (only used if .env doesn't exist or variables aren't set)
 DEFAULT_SERVER_HOST="64.227.113.96"
 DEFAULT_SERVER_USER="organic"
 DEFAULT_DEPLOY_PATH="/home/organic/dev/3x-ui"
@@ -20,27 +20,42 @@ DEFAULT_REPO_NAME="3x-ui-docker"
 # Load environment variables from .env file
 function load_env_variables {
   echo -e "${BLUE}Loading environment variables...${NC}"
-  # Check for .env file
+  
+  # First try to load from .env file
   if [ -f ".env" ]; then
     echo -e "${GREEN}Loading from .env file${NC}"
     set -a
     source .env
     set +a
+    
+    # Set defaults only for variables that weren't defined in .env
+    export SERVER_HOST=${SERVER_HOST:-$DEFAULT_SERVER_HOST}
+    export SERVER_USER=${SERVER_USER:-$DEFAULT_SERVER_USER}
+    export DEPLOY_PATH=${DEPLOY_PATH:-$DEFAULT_DEPLOY_PATH}
+    export REPO_OWNER=${REPO_OWNER:-$DEFAULT_REPO_OWNER}
+    export REPO_NAME=${REPO_NAME:-$DEFAULT_REPO_NAME}
   elif [ -f "env.example" ]; then
     echo -e "${YELLOW}No .env file found, but env.example exists.${NC}"
     echo -e "${YELLOW}Consider creating a .env file based on env.example:${NC}"
     echo -e "  cp env.example .env"
     echo -e "  # Then edit .env with your actual values"
+    
+    # Use hardcoded defaults as fallback
+    export SERVER_HOST=$DEFAULT_SERVER_HOST
+    export SERVER_USER=$DEFAULT_SERVER_USER
+    export DEPLOY_PATH=$DEFAULT_DEPLOY_PATH
+    export REPO_OWNER=$DEFAULT_REPO_OWNER
+    export REPO_NAME=$DEFAULT_REPO_NAME
   else
     echo -e "${RED}No .env or env.example file found.${NC}"
+    
+    # Use hardcoded defaults as fallback
+    export SERVER_HOST=$DEFAULT_SERVER_HOST
+    export SERVER_USER=$DEFAULT_SERVER_USER
+    export DEPLOY_PATH=$DEFAULT_DEPLOY_PATH
+    export REPO_OWNER=$DEFAULT_REPO_OWNER
+    export REPO_NAME=$DEFAULT_REPO_NAME
   fi
-  
-  # Check if required variables are set or use defaults
-  export SERVER_HOST=${SERVER_HOST:-$DEFAULT_SERVER_HOST}
-  export SERVER_USER=${SERVER_USER:-$DEFAULT_SERVER_USER}
-  export DEPLOY_PATH=${DEPLOY_PATH:-$DEFAULT_DEPLOY_PATH}
-  export REPO_OWNER=${REPO_OWNER:-$DEFAULT_REPO_OWNER}
-  export REPO_NAME=${REPO_NAME:-$DEFAULT_REPO_NAME}
   
   echo -e "${BLUE}Environment loaded:${NC}"
   echo -e "  SERVER_HOST: ${SERVER_HOST}"

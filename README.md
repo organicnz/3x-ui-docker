@@ -328,5 +328,4 @@ SSH_KEY_PATH=/path/to/your/ssh/key (optional)
 REPO_OWNER=github-username
 REPO_NAME=repository-name
 ```
-
-To set these up automatically, run `./scripts/setup-env.sh`. 
+To set these up automatically, run `./scripts/setup-env.sh`.
