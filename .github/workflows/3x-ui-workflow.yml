@@ -162,9 +162,113 @@ jobs:
           fi
           EOL
 
+  certificates:
+    name: 🔒 Setup SSL Certificates
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Add to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+      - name: Check and create SSL certificates
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
+            set -ex  # Enable verbose logging and exit on errors
+            
+            # Define variables
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            DOMAIN="${{ secrets.VPN_DOMAIN }}"
+            CERT_DIR="$DEPLOY_PATH/cert/$DOMAIN"
+            
+            echo "Checking for SSL certificates for domain: $DOMAIN"
+            
+            # Ensure the certificate directory exists
+            mkdir -p "$CERT_DIR"
+            
+            # Check if certificates already exist in Let's Encrypt directory
+            LETSENCRYPT_LIVE="/etc/letsencrypt/live/$DOMAIN"
+            if [ -d "$LETSENCRYPT_LIVE" ] && [ -f "$LETSENCRYPT_LIVE/fullchain.pem" ] && [ -f "$LETSENCRYPT_LIVE/privkey.pem" ]; then
+              echo "Found existing Let's Encrypt certificates for $DOMAIN"
+              
+              # Copy certificates to our directory
+              sudo cp "$LETSENCRYPT_LIVE/fullchain.pem" "$CERT_DIR/"
+              sudo cp "$LETSENCRYPT_LIVE/privkey.pem" "$CERT_DIR/"
+              sudo chown -R $(whoami):$(whoami) "$CERT_DIR"
+              echo "Copied Let's Encrypt certificates to $CERT_DIR"
+            else
+              echo "Let's Encrypt certificates not found at $LETSENCRYPT_LIVE"
+              
+              # Check if we already have certificates in our directory
+              if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
+                echo "Found existing certificates in $CERT_DIR"
+              else
+                echo "No certificates found. Checking if Certbot is installed..."
+                
+                # Install Certbot if not available
+                if ! command -v certbot &> /dev/null; then
+                  echo "Installing Certbot..."
+                  sudo apt-get update
+                  sudo apt-get install -y certbot
+                fi
+                
+                # Check if port 80 is in use by an existing service
+                if lsof -i:80 > /dev/null; then
+                  echo "Port 80 is in use. Stopping services to free port 80..."
+                  # Stop services that might be using port 80
+                  sudo systemctl stop nginx 2>/dev/null || true
+                  sudo docker stop $(sudo docker ps -q --filter "publish=80") 2>/dev/null || true
+                fi
+                
+                # Get certificate with Certbot
+                echo "Obtaining new SSL certificate for $DOMAIN using Certbot..."
+                sudo certbot certonly --standalone --non-interactive --agree-tos -d "$DOMAIN" --email "${{ secrets.ADMIN_EMAIL }}" || {
+                  echo "Certbot failed to obtain certificates. Creating self-signed certificates as fallback."
+                  
+                  # Create self-signed certificates as fallback
+                  echo "Creating self-signed certificates..."
+                  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                    -keyout "$CERT_DIR/privkey.pem" \
+                    -out "$CERT_DIR/fullchain.pem" \
+                    -subj "/CN=$DOMAIN/O=3x-ui/C=US"
+                  
+                  echo "Self-signed certificates created at $CERT_DIR"
+                }
+                
+                # If certificates were obtained from Let's Encrypt, copy them
+                if [ -d "$LETSENCRYPT_LIVE" ] && [ -f "$LETSENCRYPT_LIVE/fullchain.pem" ]; then
+                  sudo cp "$LETSENCRYPT_LIVE/fullchain.pem" "$CERT_DIR/"
+                  sudo cp "$LETSENCRYPT_LIVE/privkey.pem" "$CERT_DIR/"
+                fi
+                
+                # Ensure proper ownership
+                sudo chown -R $(whoami):$(whoami) "$CERT_DIR"
+              fi
+            fi
+            
+            # Verify certificates
+            echo "Verifying certificates..."
+            if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
+              echo "✅ Certificate files exist in $CERT_DIR"
+              
+              # Check certificate expiration (if openssl is available)
+              if command -v openssl &> /dev/null; then
+                echo "Certificate details:"
+                openssl x509 -noout -subject -issuer -dates -in "$CERT_DIR/fullchain.pem"
+              fi
+            else
+              echo "❌ Certificate files are missing from $CERT_DIR!"
+              exit 1
+            fi
+          EOL
+
   deploy:
     name: 🚢 Deploy VPN Service
-    needs: [setup]
+    needs: [setup, certificates]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -433,7 +537,7 @@ jobs:
 
   summary:
     name: 🎉 Deployment Summary
-    needs: [debug_info, validate, setup, deploy, verify, logs]
+    needs: [debug_info, validate, setup, certificates, deploy, verify, logs]
     if: always()
     runs-on: ubuntu-latest
     steps:
