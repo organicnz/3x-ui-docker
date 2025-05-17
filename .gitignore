@@ -11,7 +11,7 @@ backups/
 *.tgz
 
 # Certificate files
-cert/
+# Allow cert directory structure but not actual certificate files
 *.pem
 *.key
 *.crt
