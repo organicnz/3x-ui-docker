@@ -14,7 +14,7 @@ services:
       # - port:port
     volumes:
       # Mount the local x-ui.db file for persistence
-      - ./x-ui.db:/etc/x-ui/x-ui.db
+      - ./db/x-ui.db:/etc/x-ui/x-ui.db
       # Mount certificates directory
       - ./cert:/root/cert
       # Mount logs directory

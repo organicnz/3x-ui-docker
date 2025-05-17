@@ -72,9 +72,31 @@ jobs:
       - name: Check SSH connectivity
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=10 ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '✅ SSH connection successful'"
-      - name: Create deploy directory
+      - name: Initialize Git repository on server
         run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p ${{ secrets.DEPLOY_PATH }}"
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
+            # Ensure the deploy directory exists
+            mkdir -p ${{ secrets.DEPLOY_PATH }}
+            cd ${{ secrets.DEPLOY_PATH }}
+            
+            # Check if this is already a git repository
+            if [ ! -d '.git' ]; then
+              echo 'Initializing new Git repository...'
+              # Initialize a new Git repository
+              git init
+              # Add the GitHub repository as the origin
+              git remote add origin https://github.com/${{ github.repository }}.git
+              echo 'Git repository initialized.'
+            else
+              echo 'Git repository already initialized.'
+              # Update remote URL in case it changed
+              git remote set-url origin https://github.com/${{ github.repository }}.git
+            fi
+            
+            # Fetch the latest code but don't merge yet (we'll do that in the deploy step)
+            git fetch origin
+            echo 'Fetched latest code from GitHub.'
+          "
       - name: Install Docker if not installed
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
@@ -104,12 +126,14 @@ jobs:
         uses: actions/checkout@v4
       - name: Check for x-ui.db file
         run: |
-          if [ ! -f "x-ui.db" ]; then
-            echo "Warning: x-ui.db file not found in repository. Creating empty file to prevent job failure."
-            touch x-ui.db
-            echo "This is a placeholder file. It was created by the GitHub Actions workflow because the original x-ui.db was not found." > x-ui.db
+          if [ ! -f "db/x-ui.db" ]; then
+            echo "Warning: db/x-ui.db file not found in repository. Creating empty file to prevent job failure."
+            mkdir -p db
+            touch db/x-ui.db
+            echo "This is a placeholder file. It was created by the GitHub Actions workflow because the original x-ui.db was not found." > db/x-ui.db
           else
-            echo "✅ x-ui.db file found in repository."
+            echo "✅ db/x-ui.db file found in repository."
+            ls -la db/
           fi
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -122,20 +146,30 @@ jobs:
       - name: Ensure permissions on target directory
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
-            sudo chown $USER:$USER ${{ secrets.DEPLOY_PATH }}
-            sudo chmod u+w ${{ secrets.DEPLOY_PATH }}
+            mkdir -p ${{ secrets.DEPLOY_PATH }}/db
+            sudo chown $USER:$USER ${{ secrets.DEPLOY_PATH }}/db
+            sudo chmod u+w ${{ secrets.DEPLOY_PATH }}/db
           '
       - name: Remove existing x-ui.db on server (if any)
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
+            if [ -d "${{ secrets.DEPLOY_PATH }}/db/x-ui.db" ]; then
+              rm -rf "${{ secrets.DEPLOY_PATH }}/db/x-ui.db"
+              echo "Removed directory db/x-ui.db"
+            elif [ -f "${{ secrets.DEPLOY_PATH }}/db/x-ui.db" ]; then
+              rm -f "${{ secrets.DEPLOY_PATH }}/db/x-ui.db"
+              echo "Removed file db/x-ui.db"
+            else
+              echo "No db/x-ui.db file or directory to remove"
+            fi
+            
+            # Also check for and remove old x-ui.db in root
             if [ -d "${{ secrets.DEPLOY_PATH }}/x-ui.db" ]; then
               rm -rf "${{ secrets.DEPLOY_PATH }}/x-ui.db"
-              echo "Removed directory x-ui.db"
+              echo "Removed old directory x-ui.db from root"
             elif [ -f "${{ secrets.DEPLOY_PATH }}/x-ui.db" ]; then
               rm -f "${{ secrets.DEPLOY_PATH }}/x-ui.db"
-              echo "Removed file x-ui.db"
-            else
-              echo "No x-ui.db file or directory to remove"
+              echo "Removed old file x-ui.db from root"
             fi
           '
       - name: Copy x-ui.db to server
@@ -144,8 +178,8 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: x-ui.db
-          target: ${{ secrets.DEPLOY_PATH }}/x-ui.db
+          source: db/x-ui.db
+          target: ${{ secrets.DEPLOY_PATH }}
           overwrite: true
           command_timeout: 10m
 
@@ -164,26 +198,39 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      - name: Transfer files
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: docker-compose.yml,.env.example
-          target: ${{ secrets.DEPLOY_PATH }}
-          strip_components: 0
-      - name: Setup and start containers
+      - name: Deploy from Git
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
-          cd ${{ secrets.DEPLOY_PATH }}
-          if [ ! -f .env ]; then
-            cp .env.example .env
-            echo 'Created .env file from template. Please update with your settings.'
-          fi
-          mkdir -p db
-          docker-compose pull
-          docker-compose up -d
+            cd ${{ secrets.DEPLOY_PATH }}
+            
+            # Stash any local changes
+            git stash
+            
+            # Checkout the latest code from the main branch
+            git checkout main || git checkout -b main
+            git pull origin main
+            
+            # Create .env from template if it doesn't exist
+            if [ ! -f .env ]; then
+              cp .env.example .env
+              echo 'Created .env file from template. Please update with your settings.'
+            fi
+            
+            # Make sure directories exist
+            mkdir -p db cert logs
+            
+            # Start containers
+            docker-compose pull
+            docker-compose up -d
+          "
+      - name: Verify deployment
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
+            cd ${{ secrets.DEPLOY_PATH }}
+            echo 'Listing deployed files:'
+            ls -la
+            echo 'Listing docker containers:'
+            docker-compose ps
           "
 
   verify:
