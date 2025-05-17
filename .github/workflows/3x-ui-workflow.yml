@@ -208,8 +208,10 @@ jobs:
             sudo chmod u+w logs
             if [ -z "$(ls -A logs)" ]; then
               echo "No logs found, creating dummy.log"
-              sudo bash -c "echo 'No logs available.' > logs/dummy.log"
+              sudo bash -c "echo 'No logs available.' | tee logs/dummy.log"
             fi
+            echo "Contents of logs directory after ensuring dummy.log:"
+            ls -l logs
             if [ -z "$(ls -A logs)" ]; then
               echo "ERROR: logs directory is still empty after attempting to create dummy.log"
               exit 1
@@ -223,7 +225,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: logs/*
+          source: logs/
           target: workflow_logs/
           strip_components: 1
           overwrite: true
