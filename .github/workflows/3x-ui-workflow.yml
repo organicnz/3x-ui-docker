@@ -344,6 +344,33 @@ jobs:
               echo "This is a placeholder database file. It was created by the workflow because db/x-ui.db was missing." > db/x-ui.db
             fi
             
+            # Verify SSL certificates exist before starting container
+            DOMAIN="${{ secrets.VPN_DOMAIN }}"
+            CERT_DIR="cert/$DOMAIN"
+            echo "Verifying certificates for $DOMAIN in $CERT_DIR..."
+            
+            if [ ! -f "$CERT_DIR/fullchain.pem" ] || [ ! -f "$CERT_DIR/privkey.pem" ]; then
+              echo "⚠️ Certificate files missing! Creating self-signed certificates as fallback..."
+              
+              # Ensure certificate directory exists
+              mkdir -p "$CERT_DIR"
+              
+              # Create self-signed certificate
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout "$CERT_DIR/privkey.pem" \
+                -out "$CERT_DIR/fullchain.pem" \
+                -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
+                -addext "subjectAltName=DNS:$DOMAIN"
+              
+              echo "✅ Self-signed certificates created as fallback"
+              
+              # Set proper permissions
+              chmod 644 "$CERT_DIR/fullchain.pem" 
+              chmod 600 "$CERT_DIR/privkey.pem"
+            else
+              echo "✅ Certificate files found in $CERT_DIR"
+            fi
+            
             # Check if docker-compose.yml exists
             if [ ! -f "docker-compose.yml" ]; then
               echo "ERROR: docker-compose.yml not found!"
