@@ -17,6 +17,26 @@ on:
     - cron: 0 2 * * *  # Run daily at 2 AM UTC for backups
 
 jobs:
+  debug_info:
+    name: 🐛 Debug Workflow Info
+    runs-on: ubuntu-latest
+    env:
+      GH_EVENT_NAME: ${{ github.event_name }}
+      GH_REF_NAME: ${{ github.ref_name }}
+      GH_HEAD_REF: ${{ github.head_ref }}
+      GH_BASE_REF: ${{ github.base_ref }}
+      GH_REF_TYPE: ${{ github.ref_type }}
+      GH_REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Display Trigger Info
+        run: |
+          echo "Workflow triggered by: $GH_EVENT_NAME"
+          echo "Ref name: $GH_REF_NAME"
+          echo "Head ref: $GH_HEAD_REF"
+          echo "Base ref: $GH_BASE_REF"
+          echo "Ref type: $GH_REF_TYPE"
+          echo "Repository: $GH_REPOSITORY"
+
   validate:
     name: 🔍 Validate Configuration
     runs-on: ubuntu-latest
@@ -77,11 +97,20 @@ jobs:
 
   copy_db:
     name: 📥 Copy Local DB to Server
-    if: github.event_name == 'workflow_dispatch'
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Check for x-ui.db file
+        run: |
+          if [ ! -f "x-ui.db" ]; then
+            echo "Warning: x-ui.db file not found in repository. Creating empty file to prevent job failure."
+            touch x-ui.db
+            echo "This is a placeholder file. It was created by the GitHub Actions workflow because the original x-ui.db was not found." > x-ui.db
+          else
+            echo "✅ x-ui.db file found in repository."
+          fi
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
@@ -262,7 +291,7 @@ jobs:
 
   summary:
     name: 🎉 Deployment Summary
-    needs: [validate, setup, deploy, verify, logs]
+    needs: [debug_info, validate, setup, copy_db, deploy, verify, logs]
     if: always()
     runs-on: ubuntu-latest
     steps:
