@@ -2,13 +2,42 @@ version: '3.8'
 
 # 3x-ui VPN Service configuration
 services:
+  # Certificate management service
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - ./cert:/etc/letsencrypt
+      - ./cert/www:/var/www/certbot
+    command: certonly --webroot --webroot-path=/var/www/certbot --email admin@foodshare.club --agree-tos --no-eff-email --force-renewal -d service.foodshare.club
+    depends_on:
+      - nginx
+    restart: no
+
+  # NGINX for SSL termination and proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./cert:/etc/letsencrypt
+      - ./cert/www:/var/www/certbot
+      - ./cert/nginx:/etc/nginx/conf.d
+    restart: unless-stopped
+    networks:
+      - vpn-network
+    depends_on:
+      - 3x-ui
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
   3x-ui:
     image: ghcr.io/mhsanaei/3x-ui:latest
     container_name: 3x-ui
     restart: unless-stopped
     ports:
       - 54321:54321  # Admin panel
-      - "${HTTPS_PORT}:443"
       - 2053:2053    # VPN panel custom port
       # Add any other ports your VPN protocols require
       # - port:port

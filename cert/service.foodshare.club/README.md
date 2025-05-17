@@ -1,27 +1,43 @@
 # SSL Certificates for service.foodshare.club
 
-Place your SSL certificates in this directory:
+This directory will store SSL certificates for your service.foodshare.club domain. The certificates are automatically managed using Certbot and Let's Encrypt.
 
-1. `fullchain.pem` - The full certificate chain file
-2. `privkey.pem` - The private key file
+## Automated Certificate Management
 
-## How to obtain certificates
+The Docker Compose configuration now includes:
 
-You can obtain SSL certificates for your domain using Let's Encrypt:
+1. A Certbot container that automatically obtains and renews SSL certificates
+2. An NGINX container that handles SSL termination and proxies requests to the 3x-ui service
+
+## Certificate Structure
+
+After running the stack, the following files will be automatically generated:
+
+- `live/service.foodshare.club/fullchain.pem` - The full certificate chain file
+- `live/service.foodshare.club/privkey.pem` - The private key file
+
+These files are referenced by the NGINX configuration and will be used for SSL termination.
+
+## Manual Certificate Management (If Needed)
+
+If you need to manually manage certificates:
 
 ```bash
-# Using Certbot (recommended)
-certbot certonly --standalone -d service.foodshare.club
-
-# Then copy the certificates to this directory:
-cp /etc/letsencrypt/live/service.foodshare.club/fullchain.pem ./fullchain.pem
-cp /etc/letsencrypt/live/service.foodshare.club/privkey.pem ./privkey.pem
+# Using Certbot manually
+docker-compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot \
+  --email admin@foodshare.club --agree-tos --no-eff-email \
+  --force-renewal -d service.foodshare.club
 ```
 
-## Certificate files structure
+## Certificate Renewal
 
-The container expects to find these files at:
-- `/root/cert/service.foodshare.club/fullchain.pem`
-- `/root/cert/service.foodshare.club/privkey.pem`
+Certificates from Let's Encrypt are valid for 90 days. The NGINX configuration includes automatic reload every 6 hours to pick up renewed certificates.
 
-This directory is mounted to `/root/cert` in the Docker container. 
+## Troubleshooting
+
+If you encounter certificate validation errors:
+
+1. Check that the domain is properly pointing to your server's IP address
+2. Verify that ports 80 and 443 are open in your firewall
+3. Check the Certbot logs: `docker-compose logs certbot`
+4. Check the NGINX logs: `docker-compose logs nginx` 
