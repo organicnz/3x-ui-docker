@@ -95,7 +95,7 @@ while [[ $# -gt 0 ]]; do
       AUTO_CONFIRM=true
       shift
       ;;
-    *)
+    *) 
       # Break once we hit non-option arguments
       break
       ;;
@@ -131,7 +131,7 @@ if [ $# -eq 0 ]; then
   fi
   
   commit_type="${VALID_TYPES[$((type_number-1))]}"
-else
+  else
   # Direct mode with arguments
   if [ $# -lt 2 ]; then
     echo -e "${RED}Error: Missing required arguments.${NC}"
@@ -164,7 +164,7 @@ echo -e "${BLUE}Commit message will be:${NC} ${formatted_message}"
 if [ "$AUTO_CONFIRM" = false ]; then
   echo -e "${YELLOW}Proceed with commit? (y/n)${NC}"
   read -r confirm
-  
+
   if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
     echo -e "${RED}Commit aborted.${NC}"
     exit 0
@@ -174,9 +174,9 @@ fi
 # Execute the commit
 echo -e "${GREEN}Committing changes...${NC}"
 git commit -m "$formatted_message"
-
+  
 # Push the changes
 echo -e "${GREEN}Pushing changes...${NC}"
 git push --set-upstream origin --force
-
+  
 echo -e "${GREEN}Changes committed and pushed successfully!${NC}" 

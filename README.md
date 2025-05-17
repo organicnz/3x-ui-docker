@@ -156,6 +156,91 @@ cp backups/x-ui.db.backup_TIMESTAMP x-ui.db
 docker-compose up -d
 ```
 
+## Error Checking Tools
+
+We provide several CLI tools to help you quickly check for errors in both the remote server and GitHub workflow runs:
+
+### Remote Server Error Checking
+
+Check for errors in the 3x-ui container logs:
+
+```bash
+./scripts/check-remote-errors.sh
+```
+
+Options:
+- `--full`: Show full logs without filtering for errors
+- `--lines=N`: Show last N lines (default: 50)
+- `--all`: Show all log entries, not just errors
+
+### GitHub Workflow Error Checking
+
+Check for errors in GitHub Actions workflow runs:
+
+```bash
+./scripts/check-workflow-logs.sh
+```
+
+Options:
+- `--latest`: Check logs from the latest workflow run (default)
+- `--workflow-id=<id>`: Check logs from a specific workflow ID
+- `--run-id=<id>`: Check logs from a specific run ID
+
+### Combined Error Checking
+
+Check both server and workflow errors in one command:
+
+```bash
+./scripts/check-errors.sh
+```
+
+Options:
+- `--server`: Check only server errors
+- `--workflow`: Check only workflow errors
+- `--all`: Check both (default if no option specified)
+- `--server-full`: Show full server logs
+- `--server-all`: Show all server log entries
+- `--lines=N`: Show last N lines of logs
+- `--workflow-latest`: Check latest workflow run
+- `--run-id=<id>`: Check specific run ID
+
+The logs are saved in the `workflow_logs` directory, and a symlink to the latest run is always maintained at `workflow_logs/run-latest`.
+
+### Local Container Status
+
+Check the status and logs of your local Docker container:
+
+```bash
+./scripts/check-container-status.sh
+```
+
+Options:
+- `--logs`: Show only container logs
+- `--stats`: Show only container statistics
+- `--all`: Show both logs and stats (default)
+- `--lines=N`: Show last N lines of logs (default: 50)
+- `--container=NAME`: Specify container name (default: 3x-ui)
+
+This is useful for quick local debugging without having to remember various Docker commands.
+
+### Comprehensive Status Report
+
+Generate a complete status report that checks local and remote components and saves the result to a log file:
+
+```bash
+./scripts/status-report.sh
+```
+
+Options:
+- `--full`: Generate a full detailed report with more log lines
+- `--output=FILE`: Save the report to a specific file (default: logs/status-report_TIMESTAMP.log)
+
+This script combines all the error checking tools above into a single comprehensive report for troubleshooting. It includes:
+- System information
+- Local container status and logs
+- Remote server logs
+- GitHub workflow status
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
@@ -254,7 +339,7 @@ npm run commit "your commit message" "Type"
 ## Acknowledgements
 
 - [3x-ui Project](https://github.com/MHSanaei/3x-ui)
-- [XRay Core](https://github.com/XTLS/Xray-core)
+- [XRay Core](https://github.com/XTLS/Xray-core) 
 
 ## Administration Scripts
 
