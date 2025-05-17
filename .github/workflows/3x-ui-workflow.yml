@@ -71,7 +71,9 @@ jobs:
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       - name: Check SSH connectivity
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=10 ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '✅ SSH connection successful'"
+          ssh -o BatchMode=yes -o ConnectTimeout=10 ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
+            echo '✅ SSH connection successful'
+          EOL
       - name: Initialize Git repository on server
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
@@ -127,7 +129,7 @@ jobs:
           "
       - name: Install Docker if not installed
         run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
           if ! command -v docker &> /dev/null; then
             echo "Installing Docker..."
             curl -fsSL https://get.docker.com -o get-docker.sh
@@ -143,7 +145,7 @@ jobs:
           else
             echo "Docker Compose already installed."
           fi
-          '
+          EOL
 
   deploy:
     name: 🚢 Deploy VPN Service
@@ -162,7 +164,7 @@ jobs:
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
       - name: Deploy from Git
         run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             cd ${{ secrets.DEPLOY_PATH }}
             
             # Make sure we're on the main branch
@@ -197,16 +199,16 @@ jobs:
             # Start containers
             docker-compose pull
             docker-compose up -d
-          "
+          EOL
       - name: Verify deployment
         run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             cd ${{ secrets.DEPLOY_PATH }}
             echo 'Listing deployed files:'
             ls -la
             echo 'Listing docker containers:'
             docker-compose ps
-          "
+          EOL
 
   verify:
     name: ✅ Verify Deployment
