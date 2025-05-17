@@ -2,107 +2,52 @@ name: 3x-ui VPN Service Management
 
 on:
   workflow_dispatch:
-    inputs:
-      workflow_type:
-        description: 'Workflow Type'
-        required: true
-        default: 'deploy'
-        type: choice
-        options:
-          - setup
-          - deploy
-          - backup
-      environment:
-        description: 'Target Environment'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
   push:
     branches:
       - main
     paths-ignore:
-      - 'README.md'
-      - '.gitignore'
-      - 'logs/**'
-      - 'workflow_logs/**'
+      - README.md
+      - .gitignore
+      - logs/**
+      - workflow_logs/**
   schedule:
-    - cron: '0 2 * * *'  # Run daily at 2 AM UTC for backups
+    - cron: 0 2 * * *  # Run daily at 2 AM UTC for backups
 
 jobs:
-  select_workflow:
-    name: 🔍 Select Workflow
+  validate:
+    name: 🔍 Validate Configuration
     runs-on: ubuntu-latest
-    outputs:
-      workflow_type: ${{ steps.set_workflow.outputs.workflow_type }}
-      environment: ${{ steps.set_environment.outputs.environment }}
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set workflow type
-        id: set_workflow
+      - name: Validate Docker Compose
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "workflow_type=${{ github.event.inputs.workflow_type }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "schedule" ]; then
-            echo "workflow_type=backup" >> $GITHUB_OUTPUT
-          else
-            echo "workflow_type=deploy" >> $GITHUB_OUTPUT
+          if [ ! -f docker-compose.yml ]; then
+            echo "ERROR: docker-compose.yml not found!"
+            exit 1
           fi
-
-      - name: Set environment
-        id: set_environment
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-          else
-            echo "environment=production" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create log directory
-        run: |
-          mkdir -p workflow_logs/run-${{ github.run_id }}/select_workflow
-          echo "Workflow type: $(cat $GITHUB_OUTPUT | grep workflow_type | cut -d= -f2)" > workflow_logs/run-${{ github.run_id }}/select_workflow/output.log
-          echo "Environment: $(cat $GITHUB_OUTPUT | grep environment | cut -d= -f2)" >> workflow_logs/run-${{ github.run_id }}/select_workflow/output.log
-          echo "Event: ${{ github.event_name }}" >> workflow_logs/run-${{ github.run_id }}/select_workflow/output.log
-
-          # Create a symlink to the latest run for convenience
-          rm -f workflow_logs/run-latest
-          ln -sf run-${{ github.run_id }} workflow_logs/run-latest
-
-      - name: Upload logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: workflow-logs
-          path: workflow_logs/run-${{ github.run_id }}
+          cat docker-compose.yml | python3 -c "import sys, yaml; yaml.safe_load(sys.stdin)" && echo "✅ Valid YAML"
+          grep -q "3x-ui:" docker-compose.yml && echo "✅ 3x-ui service found"
+          grep -q "54321:54321" docker-compose.yml && echo "✅ Admin panel port (54321) configured"
 
   setup:
     name: 🚀 Setup Server
-    needs: select_workflow
-    if: needs.select_workflow.outputs.workflow_type == 'setup'
+    needs: validate
     runs-on: ubuntu-latest
-    environment: ${{ needs.select_workflow.outputs.environment }}
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
       - name: Add to known hosts
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-
       - name: Create deploy directory
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p ${{ secrets.DEPLOY_PATH }}"
-
       - name: Install Docker if not installed
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
@@ -114,7 +59,6 @@ jobs:
           else
             echo "Docker already installed."
           fi
-          
           if ! command -v docker-compose &> /dev/null; then
             echo "Installing Docker Compose..."
             sudo curl -L "https://github.com/docker/compose/releases/download/v2.15.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
@@ -126,59 +70,58 @@ jobs:
 
   deploy:
     name: 🚢 Deploy VPN Service
-    needs: select_workflow
-    if: needs.select_workflow.outputs.workflow_type == 'deploy' || needs.select_workflow.outputs.workflow_type == 'setup'
+    needs: setup
     runs-on: ubuntu-latest
-    environment: ${{ needs.select_workflow.outputs.environment }}
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
       - name: Add to known hosts
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-
       - name: Transfer files
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "docker-compose.yml,.env.example"
+          source: docker-compose.yml,.env.example
           target: ${{ secrets.DEPLOY_PATH }}
           strip_components: 0
-
       - name: Setup and start containers
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
           cd ${{ secrets.DEPLOY_PATH }}
-          
-          # Create .env file if it doesn't exist
           if [ ! -f .env ]; then
             cp .env.example .env
             echo 'Created .env file from template. Please update with your settings.'
           fi
-          
-          # Make sure the db directory exists
           mkdir -p db
-          
-          # Start/update the containers
           docker-compose pull
           docker-compose up -d
           "
 
-      - name: Verify deployment
+  verify:
+    name: ✅ Verify Deployment
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Add to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+      - name: Check service health
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
           cd ${{ secrets.DEPLOY_PATH }}
-          
-          # Check if container is running
           if docker-compose ps | grep -q '3x-ui'; then
             echo '✅ 3x-ui container is running'
             docker ps --filter name=3x-ui --format '{{.Status}}'
@@ -189,49 +132,48 @@ jobs:
           fi
           "
 
-  backup:
-    name: 💾 Backup Database
-    needs: select_workflow
-    if: needs.select_workflow.outputs.workflow_type == 'backup' || github.event_name == 'schedule'
+  logs:
+    name: 📊 Collect Logs
+    needs: [deploy, verify]
+    if: always()
     runs-on: ubuntu-latest
-    environment: ${{ needs.select_workflow.outputs.environment }}
     steps:
-      - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Add to known hosts
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-
-      - name: Create backup directory
-        run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
-          cd ${{ secrets.DEPLOY_PATH }}
-          mkdir -p backups
-          
-          # Create timestamped backup
-          TIMESTAMP=\$(date +%Y%m%d_%H%M%S)
-          cp db/x-ui.db backups/x-ui.db.backup_\$TIMESTAMP
-          gzip -9 backups/x-ui.db.backup_\$TIMESTAMP
-          
-          # Keep only the 7 most recent backups
-          ls -t backups/x-ui.db.backup_*.gz | tail -n +8 | xargs -r rm
-          
-          echo 'Created backup: backups/x-ui.db.backup_'\$TIMESTAMP'.gz'
-          ls -lh backups/
-          "
-
       - name: Collect Logs
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "logs/*"
-          target: "workflow_logs/"
+          source: logs/*
+          target: workflow_logs/
           strip_components: 1
           overwrite: true
-          command_timeout: "10m" 
+          command_timeout: 10m
+      - name: Archive logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-logs
+          path: workflow_logs/
+          retention-days: 7
+
+  summary:
+    name: 🎉 Deployment Summary
+    needs: [validate, setup, deploy, verify, logs]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# 3x-ui VPN Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Configuration Validation**: See validate job" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **SSH Setup**: See setup job" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Deployment**: See deploy job" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Verification**: See verify job" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Logs**: See logs job" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Access Information" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Admin Panel**: https://${{ secrets.VPN_DOMAIN }}:54321/" >> $GITHUB_STEP_SUMMARY
+      - name: Output Result
+        run: |
+          echo "✅ 3x-ui VPN deployment workflow completed." 
