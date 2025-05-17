@@ -224,7 +224,7 @@ jobs:
       - name: Copy local dummy.log to server if needed
         run: |
           echo "No logs available." > dummy.log
-          scp -o StrictHostKeyChecking=no -i ${{ secrets.SSH_PRIVATE_KEY }} dummy.log ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_PATH }}/logs/dummy.log
+          scp -o StrictHostKeyChecking=no dummy.log ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_PATH }}/logs/dummy.log
       - name: Collect Logs
         uses: appleboy/scp-action@master
         with:
