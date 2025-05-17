@@ -5,11 +5,6 @@ name: 3x-ui VPN Service Management
 
 on:
   workflow_dispatch:
-    inputs:
-      copy_db:
-        description: Copy local x-ui.db to server before deploy
-        required: false
-        default: 'false'
   push:
     branches:
       - main
@@ -82,7 +77,7 @@ jobs:
 
   copy_db:
     name: 📥 Copy Local DB to Server
-    if: ${{ github.event.inputs.copy_db == 'true' }}
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Set up SSH
