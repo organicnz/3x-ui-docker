@@ -201,13 +201,20 @@ jobs:
       - name: Ensure logs directory is not empty
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
+            set -e
             cd ${{ secrets.DEPLOY_PATH }}
             mkdir -p logs
             sudo chown $USER:$USER logs
             sudo chmod u+w logs
             if [ -z "$(ls -A logs)" ]; then
               echo "No logs found, creating dummy.log"
-              echo "No logs available." > logs/dummy.log
+              sudo bash -c "echo 'No logs available.' > logs/dummy.log"
+            fi
+            if [ -z "$(ls -A logs)" ]; then
+              echo "ERROR: logs directory is still empty after attempting to create dummy.log"
+              exit 1
+            else
+              echo "Logs directory is ready for SCP."
             fi
           '
       - name: Collect Logs
