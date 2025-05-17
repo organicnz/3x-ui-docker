@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# Change to the directory where the script is located
+cd "$(dirname "$0")/.." || exit 1
+
+# Source the utility library
+if [ -f "scripts/utils.sh" ]; then
+  source scripts/utils.sh
+else
+  echo "Error: utils.sh not found. Make sure you're running the script from the project root."
+  exit 1
+fi
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -9,6 +20,34 @@ NC='\033[0m' # No Color
 
 LOGS_DIR="workflow_logs"
 LATEST_RUN_DIR="${LOGS_DIR}/run-latest"
+
+# Load environment variables from .env file
+function load_env_variables {
+  echo -e "${BLUE}Loading environment variables...${NC}"
+  # Check for .env file
+  if [ -f ".env" ]; then
+    echo -e "${GREEN}Loading from .env file${NC}"
+    set -a
+    source .env
+    set +a
+  elif [ -f "env.example" ]; then
+    echo -e "${YELLOW}No .env file found, but env.example exists.${NC}"
+    echo -e "${YELLOW}Consider creating a .env file based on env.example:${NC}"
+    echo -e "  cp env.example .env"
+    echo -e "  # Then edit .env with your actual values"
+  else
+    echo -e "${RED}No .env or env.example file found.${NC}"
+  fi
+  # Check if required variables are set or use defaults
+  SERVER_HOST=${SERVER_HOST:-$VPN_DOMAIN}
+  SERVER_USER=${SERVER_USER:-root}
+  DEPLOY_PATH=${DEPLOY_PATH:-/home/organic/dev/3x-ui}
+  echo -e "${BLUE}Environment loaded:${NC}"
+  echo -e "  SERVER_HOST: ${SERVER_HOST:-not set}"
+  echo -e "  SERVER_USER: ${SERVER_USER:-not set}"
+  echo -e "  DEPLOY_PATH: ${DEPLOY_PATH:-not set}"
+  echo -e ""
+}
 
 # Make sure the logs directory exists
 mkdir -p ${LOGS_DIR}
@@ -24,6 +63,8 @@ function show_help {
   echo -e "  -f, --fetch    Fetch logs from server (requires SSH access)"
   echo -e "  -a, --all      Show all available logs"
   echo -e "  -g, --github   Instructions for checking GitHub Actions logs"
+  echo -e "  -e, --env      Show loaded environment variables"
+  echo -e "  -c, --check    Check remote server setup"
   echo -e ""
 }
 
@@ -57,29 +98,76 @@ function show_github_instructions {
   echo -e "Since GitHub Actions secrets can't be accessed locally, follow these steps to view workflow logs:"
   echo -e ""
   echo -e "${YELLOW}1. Visit GitHub Actions page:${NC}"
-  echo -e "   https://github.com/organicnz/3x-ui-docker/actions"
+  echo -e "   https://github.com/${REPO_OWNER}/${REPO_NAME}/actions"
   echo -e ""
-  echo -e "${YELLOW}2. Click on the latest workflow run (named \"3x-ui VPN Simple Deployment\")${NC}"
+  echo -e "${YELLOW}2. Click on the latest workflow run (named \"3x-ui VPN Deployment\")${NC}"
   echo -e ""
   echo -e "${YELLOW}3. Review logs for each workflow step${NC}"
   echo -e ""
-  echo -e "${BLUE}=== SETTING UP LOCAL ENVIRONMENT FOR REMOTE LOG FETCHING ===${NC}"
+  echo -e "${BLUE}=== USING LOCAL ENVIRONMENT VARIABLES FOR LOG FETCHING ===${NC}"
   echo -e ""
-  echo -e "To fetch logs directly from the remote server, you need to set these environment variables:"
-  echo -e "  SERVER_HOST - The hostname or IP address of your server"
-  echo -e "  SERVER_USER - The SSH username for the server"
-  echo -e "  DEPLOY_PATH - The deployment path on the server"
+  echo -e "Your environment is currently configured as:"
+  echo -e "  SERVER_HOST: ${SERVER_HOST}"
+  echo -e "  SERVER_USER: ${SERVER_USER}"
+  echo -e "  DEPLOY_PATH: ${DEPLOY_PATH}"
   echo -e ""
-  echo -e "You can find these values in your GitHub repository secrets at:"
-  echo -e "  https://github.com/organicnz/3x-ui-docker/settings/secrets/actions"
+  
+  if [ -z "${SERVER_HOST}" ] || [ -z "${SERVER_USER}" ] || [ -z "${DEPLOY_PATH}" ]; then
+    echo -e "${YELLOW}Some required variables are not set.${NC}"
+    echo -e "Make sure these values are defined in your .env file or set them manually:"
+    echo -e "  SERVER_HOST - The hostname or IP address of your server"
+    echo -e "  SERVER_USER - The SSH username for the server"
+    echo -e "  DEPLOY_PATH - The deployment path on the server"
+    echo -e ""
+    echo -e "You can find these values in your GitHub repository secrets at:"
+    echo -e "  https://github.com/${REPO_OWNER}/${REPO_NAME}/settings/secrets/actions"
+    echo -e ""
+    echo -e "Or set them manually with:"
+    echo -e "  export SERVER_HOST=your-server-hostname"
+    echo -e "  export SERVER_USER=your-server-username"
+    echo -e "  export DEPLOY_PATH=your-deployment-path"
+    echo -e ""
+  fi
+  
+  echo -e "After ensuring these variables are set, you can run: $0 -f"
   echo -e ""
-  echo -e "Then set them locally with:"
-  echo -e "  export SERVER_HOST=your-server-hostname"
-  echo -e "  export SERVER_USER=your-server-username"
-  echo -e "  export DEPLOY_PATH=your-deployment-path"
-  echo -e ""
-  echo -e "After setting these variables, you can run: $0 -f"
-  echo -e ""
+}
+
+# Function to check remote server setup
+function check_remote_setup {
+  if [ -z "${SERVER_HOST}" ] || [ -z "${SERVER_USER}" ]; then
+    echo -e "${RED}Error: SERVER_HOST and SERVER_USER must be set.${NC}"
+    return 1
+  fi
+  
+  echo -e "${BLUE}Checking remote server setup...${NC}"
+  
+  # Get SSH options
+  SSH_OPTIONS=$(get_ssh_options)
+  
+  # Test SSH connection
+  test_ssh_connection "$SSH_OPTIONS"
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  
+  # Check & create deploy path if needed
+  ensure_deploy_path "$SSH_OPTIONS"
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  
+  # Check & create logs directory if needed
+  ensure_logs_directory "$SSH_OPTIONS"
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  
+  # Check & create log files if needed
+  ensure_log_files "$SSH_OPTIONS"
+  
+  echo -e "${GREEN}Remote server setup check completed successfully.${NC}"
+  return 0
 }
 
 # Function to fetch logs from server
@@ -89,19 +177,27 @@ function fetch_logs {
   # Check if required environment variables are set
   if [ -z "${SERVER_HOST}" ] || [ -z "${SERVER_USER}" ] || [ -z "${DEPLOY_PATH}" ]; then
     echo -e "${RED}Error: Required environment variables not set.${NC}"
-    echo -e "${YELLOW}These variables are typically defined in GitHub Actions secrets.${NC}"
+    echo -e "${YELLOW}These variables should be in your .env file or set manually.${NC}"
     echo -e ""
-    echo "Please set the following environment variables:"
+    echo "Please ensure the following environment variables are set:"
     echo "  SERVER_HOST: The hostname or IP of the server"
     echo "  SERVER_USER: The SSH username for the server"
     echo "  DEPLOY_PATH: The path where 3x-ui is deployed"
     echo ""
-    echo "For example:"
-    echo "  export SERVER_HOST=your-server.example.com"
-    echo "  export SERVER_USER=username"
-    echo "  export DEPLOY_PATH=/path/to/3x-ui"
+    echo "For example in your .env file:"
+    echo "  SERVER_HOST=your-server.example.com"
+    echo "  SERVER_USER=username"
+    echo "  DEPLOY_PATH=/path/to/3x-ui"
     echo ""
     echo -e "${YELLOW}Run with --github for instructions on viewing logs in GitHub Actions.${NC}"
+    return 1
+  fi
+  
+  # First check if the remote setup is correct
+  check_remote_setup
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Remote server setup check failed.${NC}"
+    echo -e "Please fix the issues above before fetching logs."
     return 1
   fi
   
@@ -111,8 +207,13 @@ function fetch_logs {
   mkdir -p ${RUN_DIR}/select_workflow
   
   # SSH to server and fetch the logs
-  echo "Connecting to ${SERVER_USER}@${SERVER_HOST}..."
-  scp ${SERVER_USER}@${SERVER_HOST}:${DEPLOY_PATH}/workflow_logs/latest_*.log ${RUN_DIR}/select_workflow/ > /dev/null 2>&1
+  echo -e "${BLUE}Connecting to ${SERVER_USER}@${SERVER_HOST} to fetch logs...${NC}"
+  
+  # Get SSH options
+  SSH_OPTIONS=$(get_ssh_options)
+  
+  # Now fetch the logs
+  eval "scp $SSH_OPTIONS ${SERVER_USER}@${SERVER_HOST}:${DEPLOY_PATH}/workflow_logs/latest_*.log ${RUN_DIR}/select_workflow/" 2>/dev/null
   
   if [ $? -ne 0 ]; then
     echo -e "${RED}Error: Failed to fetch logs from server.${NC}"
@@ -123,8 +224,9 @@ function fetch_logs {
     echo "1. The GitHub Actions workflow uses a dedicated SSH key stored in secrets"
     echo "2. Your local SSH key may be different"
     echo "3. Consider setting up your SSH configuration (~/.ssh/config) with the correct key"
+    echo "4. Or specify the SSH key path in your .env file with SSH_KEY_PATH variable"
     echo ""
-    echo -e "${YELLOW}Run with --github for instructions on viewing logs in GitHub Actions.${NC}"
+    echo -e "${YELLOW}Run with --check to diagnose server setup issues.${NC}"
     rm -rf ${RUN_DIR}
     return 1
   fi
@@ -190,6 +292,28 @@ function show_all_logs {
   return 0
 }
 
+# Function to show environment variables
+function show_env_variables {
+  echo -e "${BLUE}Current Environment Variables:${NC}"
+  echo -e "${YELLOW}SERVER_HOST:${NC} ${SERVER_HOST}"
+  echo -e "${YELLOW}SERVER_USER:${NC} ${SERVER_USER}"
+  echo -e "${YELLOW}DEPLOY_PATH:${NC} ${DEPLOY_PATH}"
+  echo -e "${YELLOW}SSH_KEY_PATH:${NC} ${SSH_KEY_PATH:-not set}"
+  echo -e ""
+  
+  if [ -z "${SERVER_HOST}" ] || [ -z "${SERVER_USER}" ] || [ -z "${DEPLOY_PATH}" ]; then
+    echo -e "${RED}Warning: Some required variables are not set.${NC}"
+    echo -e "These should be defined in your .env file for proper operation."
+    echo -e ""
+  else
+    echo -e "${GREEN}All required variables are set.${NC}"
+    echo -e ""
+  fi
+}
+
+# Load environment variables first
+load_env_variables
+
 # Parse command line arguments
 if [ $# -eq 0 ]; then
   # Default action: show latest logs
@@ -215,6 +339,12 @@ else
         ;;
       -g|--github)
         show_github_instructions
+        ;;
+      -e|--env)
+        show_env_variables
+        ;;
+      -c|--check)
+        check_remote_setup
         ;;
       *)
         echo -e "${RED}Unknown option: $1${NC}"

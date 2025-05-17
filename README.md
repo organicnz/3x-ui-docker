@@ -254,4 +254,79 @@ npm run commit "your commit message" "Type"
 ## Acknowledgements
 
 - [3x-ui Project](https://github.com/MHSanaei/3x-ui)
-- [XRay Core](https://github.com/XTLS/Xray-core) 
+- [XRay Core](https://github.com/XTLS/Xray-core)
+
+## Administration Scripts
+
+We've created several utility scripts to help you manage your VPN deployment. The scripts now use a shared utilities library to ensure consistency and avoid code duplication.
+
+### Main Administration Tool
+
+The main administration tool provides a menu-driven interface for all management tasks:
+
+```bash
+./scripts/vpn-admin.sh
+```
+
+This tool allows you to:
+- Set up your environment variables
+- View GitHub Actions workflow status
+- Fetch and view remote logs
+- Deploy the VPN service
+- SSH to the VPN server
+- Check server status
+
+### Individual Scripts
+
+If you prefer to use individual scripts:
+
+#### Environment Setup
+```bash
+./scripts/setup-env.sh
+```
+This script creates a `.env` file from the example template and helps you configure the required variables.
+
+#### Workflow Logs
+```bash
+./scripts/workflow-logs.sh [options]
+```
+Options:
+- `-l, --latest`: Show latest logs (default)
+- `-f, --fetch`: Fetch logs from the remote server
+- `-a, --all`: Show all available logs
+- `-g, --github`: Instructions for checking GitHub Actions logs
+- `-e, --env`: Show loaded environment variables
+- `-c, --check`: Check remote server setup
+
+#### Workflow Status
+```bash
+./scripts/check-workflow-status.sh [options]
+```
+Options:
+- `-h, --help`: Show help message
+- `-l, --limit N`: Show N most recent workflow runs (default: 5)
+- `-a, --all`: Show all workflow runs
+
+### Shared Utilities Library
+
+All these scripts use a common utilities library (`scripts/utils.sh`), which provides:
+
+- Standardized environment variable loading
+- Common SSH functions
+- Directory and file management functions
+- Consistent color formatting
+
+### Environment Variables
+
+The scripts use the following environment variables (stored in `.env`):
+
+```
+SERVER_HOST=your-server-hostname
+SERVER_USER=username
+DEPLOY_PATH=/path/to/3x-ui
+SSH_KEY_PATH=/path/to/your/ssh/key (optional)
+REPO_OWNER=github-username
+REPO_NAME=repository-name
+```
+
+To set these up automatically, run `./scripts/setup-env.sh`. 
