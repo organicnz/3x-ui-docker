@@ -145,75 +145,9 @@ jobs:
           fi
           '
 
-  copy_db:
-    name: 📥 Copy Local DB to Server
-    needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Check for x-ui.db file
-        run: |
-          if [ ! -f "db/x-ui.db" ]; then
-            echo "Warning: db/x-ui.db file not found in repository. Creating empty file to prevent job failure."
-            mkdir -p db
-            touch db/x-ui.db
-            echo "This is a placeholder file. It was created by the GitHub Actions workflow because the original x-ui.db was not found." > db/x-ui.db
-          else
-            echo "✅ db/x-ui.db file found in repository."
-            ls -la db/
-          fi
-      - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      - name: Add to known hosts
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      - name: Ensure permissions on target directory
-        run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
-            mkdir -p ${{ secrets.DEPLOY_PATH }}/db
-            sudo chown $USER:$USER ${{ secrets.DEPLOY_PATH }}/db
-            sudo chmod u+w ${{ secrets.DEPLOY_PATH }}/db
-          '
-      - name: Remove existing x-ui.db on server (if any)
-        run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} '
-            if [ -d "${{ secrets.DEPLOY_PATH }}/db/x-ui.db" ]; then
-              rm -rf "${{ secrets.DEPLOY_PATH }}/db/x-ui.db"
-              echo "Removed directory db/x-ui.db"
-            elif [ -f "${{ secrets.DEPLOY_PATH }}/db/x-ui.db" ]; then
-              rm -f "${{ secrets.DEPLOY_PATH }}/db/x-ui.db"
-              echo "Removed file db/x-ui.db"
-            else
-              echo "No db/x-ui.db file or directory to remove"
-            fi
-            
-            # Also check for and remove old x-ui.db in root
-            if [ -d "${{ secrets.DEPLOY_PATH }}/x-ui.db" ]; then
-              rm -rf "${{ secrets.DEPLOY_PATH }}/x-ui.db"
-              echo "Removed old directory x-ui.db from root"
-            elif [ -f "${{ secrets.DEPLOY_PATH }}/x-ui.db" ]; then
-              rm -f "${{ secrets.DEPLOY_PATH }}/x-ui.db"
-              echo "Removed old file x-ui.db from root"
-            fi
-          '
-      - name: Copy x-ui.db to server
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: db/x-ui.db
-          target: ${{ secrets.DEPLOY_PATH }}
-          overwrite: true
-          command_timeout: 10m
-
   deploy:
     name: 🚢 Deploy VPN Service
-    needs: [setup, copy_db]
+    needs: [setup]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -366,7 +300,7 @@ jobs:
 
   summary:
     name: 🎉 Deployment Summary
-    needs: [debug_info, validate, setup, copy_db, deploy, verify, logs]
+    needs: [debug_info, validate, setup, deploy, verify, logs]
     if: always()
     runs-on: ubuntu-latest
     steps:
