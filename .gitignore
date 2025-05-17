@@ -1,7 +1,5 @@
 # Database files
-*.db
-!x-ui.db
-*.db-journal
+# (removed *.db, !x-ui.db, *.db-journal)
 
 # Backup files
 backups/
