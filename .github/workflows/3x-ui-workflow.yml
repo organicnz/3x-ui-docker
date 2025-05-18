@@ -5,15 +5,6 @@ name: 3x-ui VPN Service Management
 
 on:
   workflow_dispatch:
-    inputs:
-      run_cert_fix_only:
-        description: Run only the certificate fix job
-        type: boolean
-        default: false
-      environment:
-        description: Environment to deploy to
-        type: string
-        default: production
   push:
     branches:
       - main
@@ -29,28 +20,28 @@ jobs:
   debug_info:
     name: 🐛 Debug Workflow Info
     runs-on: ubuntu-latest
-    if: ${{ !inputs.run_cert_fix_only }}
-    env:
-      GH_EVENT_NAME: ${{ github.event_name }}
-      GH_REF_NAME: ${{ github.ref_name }}
-      GH_HEAD_REF: ${{ github.head_ref }}
-      GH_BASE_REF: ${{ github.base_ref }}
-      GH_REF_TYPE: ${{ github.ref_type }}
-      GH_REPOSITORY: ${{ github.repository }}
     steps:
       - name: Display Trigger Info
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_REF_NAME: ${{ github.ref_name }}
+          GH_BASE_REF: ${{ github.base_ref }}
+          GH_REF_TYPE: ${{ github.ref_type }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
           echo "Workflow triggered by: $GH_EVENT_NAME"
           echo "Ref name: $GH_REF_NAME"
-          echo "Head ref: $GH_HEAD_REF"
           echo "Base ref: $GH_BASE_REF"
           echo "Ref type: $GH_REF_TYPE"
           echo "Repository: $GH_REPOSITORY"
+          echo "Run ID: $GH_RUN_ID"
+          echo "Auto-deploy mode: enabled"
 
   cert_fix:
     name: 🚑 Emergency Certificate Fix
     runs-on: ubuntu-latest
-    # This job can run either as part of the workflow or on its own
+    if: ${{ github.event_name == 'workflow_dispatch' && contains(github.event.inputs, 'run_cert_fix_only') && github.event.inputs.run_cert_fix_only == 'true' }}
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -114,7 +105,6 @@ jobs:
   validate:
     name: 🔍 Validate Configuration
     runs-on: ubuntu-latest
-    if: ${{ !inputs.run_cert_fix_only }}
     needs: debug_info
     steps:
       - name: Checkout code
@@ -128,13 +118,11 @@ jobs:
           cat docker-compose.yml | python3 -c "import sys, yaml; yaml.safe_load(sys.stdin)" && echo "✅ Valid YAML"
           grep -q "3x-ui:" docker-compose.yml && echo "✅ 3x-ui service found"
           grep -q "54321:54321" docker-compose.yml && echo "✅ Admin panel port (54321) configured"
-          grep -q ":443" docker-compose.yml && echo "✅ HTTPS port mapping (:443) configured"
 
   setup:
     name: 🚀 Setup Server
     needs: validate
     runs-on: ubuntu-latest
-    if: ${{ !inputs.run_cert_fix_only }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -243,7 +231,6 @@ jobs:
     name: 🚢 Deploy VPN Service
     needs: [setup]
     runs-on: ubuntu-latest
-    if: ${{ !inputs.run_cert_fix_only }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -260,90 +247,132 @@ jobs:
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on error
             
-            # Define deploy path
+            # Define variables
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             REPO_URL="https://github.com/${{ github.repository }}.git"
+            DEPLOY_BRANCH="main"
+            REPO_ROOT=$(dirname "$DEPLOY_PATH")
+            REPO_DIR=$(basename "$DEPLOY_PATH")
             
-            echo "Current directory: $(pwd)"
-            echo "Deploying to: $DEPLOY_PATH"
+            # Go to parent directory
+            cd "$REPO_ROOT"
             
-            # Ensure we're in the right directory
-            cd "$DEPLOY_PATH" || {
-              echo "ERROR: Unable to cd to $DEPLOY_PATH"
-              exit 1
-            }
+            # Forcibly recreate the repository to ensure we have the latest clean state
+            echo "🔄 Ensuring clean repository state with latest code"
+            if [ -d "$REPO_DIR" ]; then
+              # Backup important data first
+              echo "📦 Backing up important data"
+              BACKUP_DIR="/tmp/3x-ui-backup-$(date +%s)"
+              mkdir -p "$BACKUP_DIR"
+              
+              # Enter repo dir for backup
+              cd "$REPO_DIR"
+              
+              # Backup essential files
+              if [ -f ".env" ]; then
+                cp .env "$BACKUP_DIR/"
+              fi
+              
+              if [ -d "db" ]; then
+                mkdir -p "$BACKUP_DIR/db"
+                cp -r db/* "$BACKUP_DIR/db/" 2>/dev/null || true
+              fi
+              
+              if [ -d "logs" ]; then
+                mkdir -p "$BACKUP_DIR/logs"
+                cp -r logs/* "$BACKUP_DIR/logs/" 2>/dev/null || true
+              fi
+              
+              # Return to parent directory
+              cd "$REPO_ROOT"
+              
+              # Remove old repository
+              echo "🗑️ Removing old repository"
+              rm -rf "$REPO_DIR"
+            fi
             
-            echo "Current directory after cd: $(pwd)"
-            echo "Repository content before pulling:"
-            ls -la
+            # Clone fresh repository
+            echo "🔄 Cloning fresh repository from $REPO_URL"
+            git clone -b "$DEPLOY_BRANCH" "$REPO_URL" "$REPO_DIR"
             
-            # Ensure we have the latest code
-            echo "Fetching and resetting to latest code"
-            git fetch --all
-            git checkout main || git checkout -b main
+            # Enter repository
+            cd "$REPO_DIR"
             
-            # Force reset to origin/main to ensure we have the latest code
-            git reset --hard origin/main
-            
-            echo "Repository content after pulling:"
-            ls -la
-            
-            # Create .env from template if it doesn't exist
-            if [ ! -f .env ]; then
-              if [ -f .env.example ]; then
-                cp .env.example .env
-                echo "Created .env file from .env.example"
-              else
-                echo "WARNING: No template file found for .env"
-                touch .env
+            # Restore data from backup
+            if [ -d "$BACKUP_DIR" ]; then
+              echo "📦 Restoring data from backup"
+              
+              # Restore .env
+              if [ -f "$BACKUP_DIR/.env" ]; then
+                cp "$BACKUP_DIR/.env" .env
+                echo "✅ Restored .env file"
+              fi
+              
+              # Restore database
+              if [ -d "$BACKUP_DIR/db" ]; then
+                mkdir -p db
+                cp -r "$BACKUP_DIR/db/"* db/ 2>/dev/null || true
+                echo "✅ Restored database files"
+              fi
+              
+              # Restore logs
+              if [ -d "$BACKUP_DIR/logs" ]; then
+                mkdir -p logs
+                cp -r "$BACKUP_DIR/logs/"* logs/ 2>/dev/null || true
+                echo "✅ Restored log files"
               fi
             fi
             
-            # Make sure directories exist
-            mkdir -p db cert logs cert/service.foodshare.club
+            # Create default .env if it doesn't exist
+            if [ ! -f ".env" ]; then
+              if [ -f ".env.example" ]; then
+                cp .env.example .env
+                echo "📄 Created .env file from template"
+              else
+                touch .env
+                echo "📄 Created empty .env file"
+              fi
+            fi
             
-            # Make sure db/x-ui.db exists and is a file, not a directory
+            # Ensure required directories exist
+            echo "📁 Ensuring required directories exist"
+            mkdir -p db cert logs cert/service.foodshare.club docs
+            
+            # Ensure db/x-ui.db exists and is a file
             if [ -d "db/x-ui.db" ]; then
-              echo "db/x-ui.db is a directory, fixing..."
+              echo "⚠️ db/x-ui.db is a directory, fixing..."
               rm -rf db/x-ui.db
               touch db/x-ui.db
-              echo "This is a placeholder database file. It was created by the workflow because db/x-ui.db was incorrectly a directory." > db/x-ui.db
-              echo "Fixed db/x-ui.db"
+              echo "✅ Fixed db/x-ui.db"
             elif [ ! -f "db/x-ui.db" ]; then
-              echo "db/x-ui.db doesn't exist, creating placeholder..."
+              echo "📄 Creating db/x-ui.db placeholder"
               touch db/x-ui.db
-              echo "This is a placeholder database file. It was created by the workflow because db/x-ui.db was missing." > db/x-ui.db
             fi
             
-            # Ensure we have the Caddy directory for documentation
-            echo "Ensuring docs directory exists"
-            mkdir -p docs
-            
-            # Check if docker-compose.yml exists
-            if [ ! -f "docker-compose.yml" ]; then
-              echo "ERROR: docker-compose.yml not found!"
-              exit 1
-            fi
-            
-            # Set up Docker networks if they don't exist
-            echo "Setting up Docker networks"
+            # Set up Docker networks
+            echo "🌐 Setting up Docker networks"
             docker network create web 2>/dev/null || true
             docker network create no-zero-trust-cloudflared 2>/dev/null || true
             
-            # Start containers
-            echo "Starting containers with docker-compose"
+            # Deploy containers
+            echo "🚀 Deploying containers"
             docker-compose pull
             docker-compose down
             docker-compose up -d
             
-            echo "Deployment completed, checking container status:"
+            echo "✅ Deployment completed!"
+            echo "🔎 Container status:"
             docker-compose ps
             
-            # Provide reminder about Caddy configuration
+            # Check if Caddy config exists and display information
             if [ -f "docs/caddy-config.md" ]; then
-              echo "⚠️ IMPORTANT: Remember to add the Caddy configuration from docs/caddy-config.md to your Caddyfile"
-              echo "To check the Caddy config: cat docs/caddy-config.md"
+              echo "⚠️ IMPORTANT: Update your Caddy configuration with:"
+              echo "📁 $(pwd)/docs/caddy-config.md"
             fi
+            
+            # Verify deployed version
+            echo "📋 Deployed version information:"
+            git log -n 1 --pretty=format:"Commit: %h%nAuthor: %an%nDate: %ad%nMessage: %s"
           EOL
       - name: Verify deployment
         run: |
@@ -393,7 +422,6 @@ jobs:
     name: ✅ Verify Deployment
     needs: deploy
     runs-on: ubuntu-latest
-    if: ${{ !inputs.run_cert_fix_only }}
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -450,7 +478,7 @@ jobs:
   logs:
     name: 📊 Collect Logs
     needs: [deploy, verify]
-    if: always() && !inputs.run_cert_fix_only
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Set up SSH
@@ -534,7 +562,7 @@ jobs:
           echo "# 3x-ui VPN Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [[ "${{ inputs.run_cert_fix_only }}" == "true" ]]; then
+          if [[ "${{ !env.SHOULD_DEPLOY == 'true' }}" == "true" ]]; then
             echo "✅ **Certificate Fix**: Emergency fix applied" >> $GITHUB_STEP_SUMMARY
           else
             echo "✅ **Debug Info**: See debug_info job" >> $GITHUB_STEP_SUMMARY
@@ -548,10 +576,10 @@ jobs:
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Access Information" >> $GITHUB_STEP_SUMMARY
-          echo "🔗 **Admin Panel**: https://${{ secrets.VPN_DOMAIN }}:54321/" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Admin Panel**: https://${{ secrets.VPN_DOMAIN }}/BXv8SI7gBe/" >> $GITHUB_STEP_SUMMARY
       - name: Output Result
         run: |
-          if [[ "${{ inputs.run_cert_fix_only }}" == "true" ]]; then
+          if [[ "${{ !env.SHOULD_DEPLOY == 'true' }}" == "true" ]]; then
             echo "✅ 3x-ui VPN certificate fix completed."
           else
             echo "✅ 3x-ui VPN deployment workflow completed."
