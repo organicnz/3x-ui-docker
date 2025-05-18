@@ -31,7 +31,7 @@ echo -e "${GREEN}Container started.${NC}"
 # Check if the container is running
 if docker ps | grep -q "3x-ui"; then
   echo -e "${GREEN}Container is running successfully.${NC}"
-  echo -e "${BLUE}Access the admin panel at:${NC} http://localhost:54321"
+  echo -e "${BLUE}Access the admin panel at:${NC} https://localhost:54321/BXv8SI7gBe/"
   echo -e "${BLUE}Default credentials:${NC}"
   echo -e "  Username: ${CYAN}admin${NC}"
   echo -e "  Password: ${CYAN}admin${NC}"
@@ -41,4 +41,5 @@ else
   exit 1
 fi
 
-echo -e "${GREEN}Setup complete!${NC}" 
+echo -e "${GREEN}Setup complete!${NC}"
+echo -e "${YELLOW}TIP: Run ./scripts/open-panel.sh to open the admin panel in your browser.${NC}" 

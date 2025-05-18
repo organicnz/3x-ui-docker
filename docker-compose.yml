@@ -5,11 +5,9 @@ services:
     container_name: 3x-ui
     restart: unless-stopped
     ports:
-      - 54321:54321  # Admin panel
-      # Re-enable direct access to VPN service
-      - 2053:2053    # VPN panel custom port
-      # Add any other ports your VPN protocols require
-      # - port:port
+      # Important: The admin panel actually runs on port 2053 inside the container
+      # We map it to 54321 on the host for access via https://localhost:54321/BXv8SI7gBe/
+      - 54321:2053  # Map container's 2053 port to host's 54321
     volumes:
       # Mount the db directory for persistence
       - ./db:/etc/x-ui
@@ -19,13 +17,18 @@ services:
       - ./logs:/var/log/x-ui
     environment:
       - XRAY_VMESS_AEAD_FORCED=false
-      - PANEL_PATH=BXv8SI7gBe     # Set custom panel path
+      - PANEL_PATH=BXv8SI7gBe     # Custom panel path - access via /BXv8SI7gBe/
       # Set custom base URL for assets without port number
       - BASE_URL=http://localhost
       # Force using assets from BASE_URL without port
       - ASSETS_OVERRIDE=true
-      # Run in secure mode to enforce HTTPS (disabled for local dev)
+      # Force using HTTP instead of HTTPS for local development
       - XUI_ENFORCE_HTTPS=false
+      # Disable all TLS (though the panel still uses HTTPS internally)
+      - FORCE_HTTPS=false
+      - DISABLE_TLS=true
+      # Set proper URL protocol
+      - URL_PROTOCOL=http
     # Removing the health check as the container doesn't have the necessary commands
     # Will rely on process monitoring instead
     networks:

@@ -425,23 +425,23 @@ For local development and testing, the following modifications have been made to
 
 2. **Simplified Configuration**: 
    - `BASE_URL` set to `http://localhost`
-   - `XUI_ENFORCE_HTTPS` set to `false`
-   - Removed health check that required unavailable tools in the container
+   - `XUI_ENFORCE_HTTPS` set to `false` (though the panel uses HTTPS internally)
+   - Custom panel path is set to `BXv8SI7gBe`
 
 3. **Quick Start for Development**:
    ```bash
-   # Create necessary directories
-   mkdir -p db cert/nginx logs
+   # Create necessary directories and start the container
+   ./scripts/local-setup.sh
    
-   # Start the container
-   docker-compose up -d
-   
-   # Access the admin panel
-   open http://localhost:54321
+   # Or open the panel directly if already set up
+   ./scripts/open-panel.sh
    ```
 
-4. **Default Credentials**:
+4. **Access the Admin Panel**:
+   - URL: `https://localhost:54321/BXv8SI7gBe/`
    - Username: `admin`
    - Password: `admin`
    
 Remember to change the default credentials immediately after first login!
+
+**Note**: The panel uses a self-signed certificate, so your browser may show a security warning. This is expected in a local development environment.
