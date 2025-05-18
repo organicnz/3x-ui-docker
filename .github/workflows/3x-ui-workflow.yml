@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       run_cert_fix_only:
-        description: 'Run only the certificate fix job'
+        description: Run only the certificate fix job
         type: boolean
         default: false
       environment:
-        description: 'Environment to deploy to'
+        description: Environment to deploy to
         type: string
-        default: 'production'
+        default: production
   push:
     branches:
       - main
@@ -239,114 +239,9 @@ jobs:
           fi
           EOL
 
-  certificates:
-    name: 🔒 Setup SSL Certificates
-    needs: setup
-    runs-on: ubuntu-latest
-    if: ${{ !inputs.run_cert_fix_only }}
-    steps:
-      - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      - name: Add to known hosts
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      - name: Check and create SSL certificates
-        run: |
-          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
-            set -ex  # Enable verbose logging and exit on errors
-            
-            # Define variables
-            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            DOMAIN="${{ secrets.VPN_DOMAIN }}"
-            CERT_DIR="$DEPLOY_PATH/cert/$DOMAIN"
-            
-            echo "Checking for SSL certificates for domain: $DOMAIN"
-            
-            # Ensure the certificate directory exists
-            mkdir -p "$CERT_DIR"
-            
-            # Check if certificates already exist in Let's Encrypt directory
-            LETSENCRYPT_LIVE="/etc/letsencrypt/live/$DOMAIN"
-            if [ -d "$LETSENCRYPT_LIVE" ] && [ -f "$LETSENCRYPT_LIVE/fullchain.pem" ] && [ -f "$LETSENCRYPT_LIVE/privkey.pem" ]; then
-              echo "Found existing Let's Encrypt certificates for $DOMAIN"
-              
-              # Copy certificates to our directory
-              sudo cp "$LETSENCRYPT_LIVE/fullchain.pem" "$CERT_DIR/"
-              sudo cp "$LETSENCRYPT_LIVE/privkey.pem" "$CERT_DIR/"
-              sudo chown -R $(whoami):$(whoami) "$CERT_DIR"
-              echo "Copied Let's Encrypt certificates to $CERT_DIR"
-            else
-              echo "Let's Encrypt certificates not found at $LETSENCRYPT_LIVE"
-              
-              # Check if we already have certificates in our directory
-              if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
-                echo "Found existing certificates in $CERT_DIR"
-              else
-                echo "No certificates found. Checking if Certbot is installed..."
-                
-                # Install Certbot if not available
-                if ! command -v certbot &> /dev/null; then
-                  echo "Installing Certbot..."
-                  sudo apt-get update
-                  sudo apt-get install -y certbot
-                fi
-                
-                # Check if port 80 is in use by an existing service
-                if lsof -i:80 > /dev/null; then
-                  echo "Port 80 is in use. Stopping services to free port 80..."
-                  # Stop services that might be using port 80
-                  sudo systemctl stop nginx 2>/dev/null || true
-                  sudo docker stop $(sudo docker ps -q --filter "publish=80") 2>/dev/null || true
-                fi
-                
-                # Get certificate with Certbot
-                echo "Obtaining new SSL certificate for $DOMAIN using Certbot..."
-                sudo certbot certonly --standalone --non-interactive --agree-tos -d "$DOMAIN" --email "${{ secrets.ADMIN_EMAIL }}" || {
-                  echo "Certbot failed to obtain certificates. Creating self-signed certificates as fallback."
-                  
-                  # Create self-signed certificates as fallback
-                  echo "Creating self-signed certificates..."
-                  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                    -keyout "$CERT_DIR/privkey.pem" \
-                    -out "$CERT_DIR/fullchain.pem" \
-                    -subj "/CN=$DOMAIN/O=3x-ui/C=US"
-                  
-                  echo "Self-signed certificates created at $CERT_DIR"
-                }
-                
-                # If certificates were obtained from Let's Encrypt, copy them
-                if [ -d "$LETSENCRYPT_LIVE" ] && [ -f "$LETSENCRYPT_LIVE/fullchain.pem" ]; then
-                  sudo cp "$LETSENCRYPT_LIVE/fullchain.pem" "$CERT_DIR/"
-                  sudo cp "$LETSENCRYPT_LIVE/privkey.pem" "$CERT_DIR/"
-                fi
-                
-                # Ensure proper ownership
-                sudo chown -R $(whoami):$(whoami) "$CERT_DIR"
-              fi
-            fi
-            
-            # Verify certificates
-            echo "Verifying certificates..."
-            if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
-              echo "✅ Certificate files exist in $CERT_DIR"
-              
-              # Check certificate expiration (if openssl is available)
-              if command -v openssl &> /dev/null; then
-                echo "Certificate details:"
-                openssl x509 -noout -subject -issuer -dates -in "$CERT_DIR/fullchain.pem"
-              fi
-            else
-              echo "❌ Certificate files are missing from $CERT_DIR!"
-              exit 1
-            fi
-          EOL
-
   deploy:
     name: 🚢 Deploy VPN Service
-    needs: [setup, certificates]
+    needs: [setup]
     runs-on: ubuntu-latest
     if: ${{ !inputs.run_cert_fix_only }}
     steps:
@@ -382,12 +277,12 @@ jobs:
             echo "Repository content before pulling:"
             ls -la
             
-            # Make sure we're on the main branch
+            # Ensure we have the latest code
+            echo "Fetching and resetting to latest code"
+            git fetch --all
             git checkout main || git checkout -b main
             
-            # Pull the latest code
-            echo "Pulling latest code from $REPO_URL"
-            git fetch origin
+            # Force reset to origin/main to ensure we have the latest code
             git reset --hard origin/main
             
             echo "Repository content after pulling:"
@@ -398,9 +293,6 @@ jobs:
               if [ -f .env.example ]; then
                 cp .env.example .env
                 echo "Created .env file from .env.example"
-              elif [ -f env.local.example ]; then
-                cp env.local.example .env
-                echo "Created .env file from env.local.example"
               else
                 echo "WARNING: No template file found for .env"
                 touch .env
@@ -408,9 +300,9 @@ jobs:
             fi
             
             # Make sure directories exist
-            mkdir -p db cert logs
+            mkdir -p db cert logs cert/service.foodshare.club
             
-            # Ensure db/x-ui.db is a file, not a directory
+            # Make sure db/x-ui.db exists and is a file, not a directory
             if [ -d "db/x-ui.db" ]; then
               echo "db/x-ui.db is a directory, fixing..."
               rm -rf db/x-ui.db
@@ -423,32 +315,9 @@ jobs:
               echo "This is a placeholder database file. It was created by the workflow because db/x-ui.db was missing." > db/x-ui.db
             fi
             
-            # Verify SSL certificates exist before starting container
-            DOMAIN="${{ secrets.VPN_DOMAIN }}"
-            CERT_DIR="cert/$DOMAIN"
-            echo "Verifying certificates for $DOMAIN in $CERT_DIR..."
-            
-            if [ ! -f "$CERT_DIR/fullchain.pem" ] || [ ! -f "$CERT_DIR/privkey.pem" ]; then
-              echo "⚠️ Certificate files missing! Creating self-signed certificates as fallback..."
-              
-              # Ensure certificate directory exists
-              mkdir -p "$CERT_DIR"
-              
-              # Create self-signed certificate
-              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                -keyout "$CERT_DIR/privkey.pem" \
-                -out "$CERT_DIR/fullchain.pem" \
-                -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
-                -addext "subjectAltName=DNS:$DOMAIN"
-              
-              echo "✅ Self-signed certificates created as fallback"
-              
-              # Set proper permissions
-              chmod 644 "$CERT_DIR/fullchain.pem" 
-              chmod 600 "$CERT_DIR/privkey.pem"
-            else
-              echo "✅ Certificate files found in $CERT_DIR"
-            fi
+            # Ensure we have the Caddy directory for documentation
+            echo "Ensuring docs directory exists"
+            mkdir -p docs
             
             # Check if docker-compose.yml exists
             if [ ! -f "docker-compose.yml" ]; then
@@ -456,13 +325,25 @@ jobs:
               exit 1
             fi
             
+            # Set up Docker networks if they don't exist
+            echo "Setting up Docker networks"
+            docker network create web 2>/dev/null || true
+            docker network create no-zero-trust-cloudflared 2>/dev/null || true
+            
             # Start containers
             echo "Starting containers with docker-compose"
             docker-compose pull
+            docker-compose down
             docker-compose up -d
             
             echo "Deployment completed, checking container status:"
             docker-compose ps
+            
+            # Provide reminder about Caddy configuration
+            if [ -f "docs/caddy-config.md" ]; then
+              echo "⚠️ IMPORTANT: Remember to add the Caddy configuration from docs/caddy-config.md to your Caddyfile"
+              echo "To check the Caddy config: cat docs/caddy-config.md"
+            fi
           EOL
       - name: Verify deployment
         run: |
@@ -644,7 +525,7 @@ jobs:
 
   summary:
     name: 🎉 Deployment Summary
-    needs: [debug_info, validate, setup, certificates, deploy, verify, logs, cert_fix]
+    needs: [debug_info, validate, setup, deploy, verify, logs, cert_fix]
     if: always()
     runs-on: ubuntu-latest
     steps:
