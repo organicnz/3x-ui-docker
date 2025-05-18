@@ -73,7 +73,7 @@ jobs:
               -keyout "$CERT_DIR/privkey.pem" \
               -out "$CERT_DIR/fullchain.pem" \
               -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
-              -addext "subjectAltName=DNS:$DOMAIN"
+              -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053"
             
             echo "🔒 Setting permissions..."
             chmod 644 "$CERT_DIR/fullchain.pem"
@@ -411,14 +411,15 @@ jobs:
                 -keyout "$CERT_DIR/privkey.pem" \
                 -out "$CERT_DIR/fullchain.pem" \
                 -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
-                -addext "subjectAltName=DNS:$DOMAIN" || {
+                -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                   echo -e "${RED}Failed to generate certificates. Trying alternate method...${NC}"
                   
                   # Fallback method - simpler OpenSSL command
                   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
                     -keyout "$CERT_DIR/privkey.pem" \
                     -out "$CERT_DIR/fullchain.pem" \
-                    -subj "/CN=$DOMAIN" || {
+                    -subj "/CN=$DOMAIN" \
+                    -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                       echo -e "${RED}Both certificate generation methods failed.${NC}"
                       exit 1
                     }
@@ -447,7 +448,7 @@ jobs:
                   -keyout "$CERT_DIR/privkey.pem" \
                   -out "$CERT_DIR/fullchain.pem" \
                   -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
-                  -addext "subjectAltName=DNS:$DOMAIN" || {
+                  -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                     echo -e "${RED}Failed to renew certificates. Restoring backup...${NC}"
                     cp "$CERT_DIR/fullchain.pem.bak" "$CERT_DIR/fullchain.pem"
                     cp "$CERT_DIR/privkey.pem.bak" "$CERT_DIR/privkey.pem"
@@ -736,6 +737,27 @@ jobs:
             cd "$DEPLOY_PATH"
             
             echo "🔄 Restarting container to apply certificate changes..."
+            
+            # Ensure certificate directory exists in both locations
+            mkdir -p "$DEPLOY_PATH/cert/service.foodshare.club"
+            
+            # Make sure the certificate exists in all required locations
+            if [ -f "$DEPLOY_PATH/cert/service.foodshare.club/fullchain.pem" ]; then
+              echo "✅ Certificates exist in domain directory"
+              
+              # Also create certificates in the root cert directory for fallback
+              cp "$DEPLOY_PATH/cert/service.foodshare.club/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
+              cp "$DEPLOY_PATH/cert/service.foodshare.club/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
+              
+              echo "✅ Copied certificates to root cert directory"
+            else
+              echo "❌ Certificates not found in domain directory!"
+            fi
+            
+            # Set proper permissions
+            chmod 644 "$DEPLOY_PATH/cert/service.foodshare.club/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
+            chmod 600 "$DEPLOY_PATH/cert/service.foodshare.club/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
+            
             docker-compose restart 3x-ui
             
             echo "⏱️ Waiting for container to start..."

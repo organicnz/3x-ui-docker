@@ -19,7 +19,7 @@ service.foodshare.club {
     # Proper headers without browsing-topics
     header {
         # Remove Permissions-Policy browsing-topics to avoid warnings
-        Permissions-Policy "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=(), conversion-measurement=(), focus-without-user-activation=(), hid=(), idle-detection=(), interest-cohort=(), serial=(), sync-script=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
+        Permissions-Policy "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=(), conversion-measurement=(), focus-without-user-activation=(), hid=(), idle-detection=(), serial=(), sync-script=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
         
         # Security headers
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -45,6 +45,7 @@ service.foodshare.club {
             # Replace port 2053 with the domain in HTML responses
             header_down Content-Type {http.response.header.Content-Type}
             replace_response "service.foodshare.club:2053" "service.foodshare.club"
+            replace_response "https://service\.foodshare\.club:\d+/" "https://service.foodshare.club/"
         }
     }
 

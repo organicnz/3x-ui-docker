@@ -21,8 +21,10 @@ services:
     environment:
       - XRAY_VMESS_AEAD_FORCED=false
       - PANEL_PATH=BXv8SI7gBe     # Set custom panel path
-      # Set custom base URL for assets
+      # Set custom base URL for assets without port number
       - BASE_URL=https://service.foodshare.club
+      # Force using assets from BASE_URL without port
+      - ASSETS_OVERRIDE=true
     healthcheck:
       test: [CMD, curl, -f, http://localhost:54321/login]
       interval: 30s
