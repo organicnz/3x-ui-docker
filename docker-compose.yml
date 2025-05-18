@@ -21,7 +21,8 @@ services:
     environment:
       - XRAY_VMESS_AEAD_FORCED=false
       - PANEL_PATH=BXv8SI7gBe     # Set custom panel path
-      # Add any other environment variables needed
+      # Set custom base URL for assets
+      - BASE_URL=https://service.foodshare.club
     healthcheck:
       test: [CMD, curl, -f, http://localhost:54321/login]
       interval: 30s
@@ -31,6 +32,9 @@ services:
     networks:
       - web
       - no-zero-trust-cloudflared
+    labels:
+      - caddy=service.foodshare.club
+      - caddy.reverse_proxy=/BXv8SI7gBe*
 
 networks:
   web:

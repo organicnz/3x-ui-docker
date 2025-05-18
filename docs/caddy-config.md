@@ -33,24 +33,29 @@ service.foodshare.club {
         Expires "0"
     }
 
-    # Special handling for admin panel assets
-    @assets {
-        path */assets/* */assets/css/* */assets/js/* */assets/vue/* */assets/moment/* */assets/ant-design-vue/* */assets/axios/*
+    # URL rewrite for port references in HTML/JS
+    @rewrite_port_refs path /BXv8SI7gBe*
+    handle @rewrite_port_refs {
+        # Rewrite HTML responses to fix port references
+        reverse_proxy 3x-ui:54321 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            # Replace port 2053 with the domain in HTML responses
+            header_down Content-Type {http.response.header.Content-Type}
+            replace_response "service.foodshare.club:2053" "service.foodshare.club"
+        }
     }
 
-    # Direct assets to 3x-ui server without path rewriting
-    handle @assets {
+    # Handle all assets paths explicitly
+    handle_path /BXv8SI7gBe/assets/* {
         reverse_proxy 3x-ui:54321 {
             header_up Host {host}
             header_up X-Real-IP {remote_host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto {scheme}
         }
-    }
-
-    # Proxy to 3x-ui admin panel with proper path handling
-    handle_path /BXv8SI7gBe* {
-        reverse_proxy 3x-ui:54321
     }
 
     # Proxy to XRay services
@@ -79,7 +84,7 @@ service.foodshare.club {
 
 ## Implementation Steps
 
-1. Add the above configuration to your Caddyfile
+1. Update your Caddyfile with the configuration above
 2. Reload Caddy configuration:
    ```bash
    docker-compose exec caddy caddy reload
@@ -92,30 +97,26 @@ service.foodshare.club {
 
 ## Troubleshooting
 
-If you encounter issues:
+If you're still seeing ERR_CERT_AUTHORITY_INVALID errors:
 
-1. Check Caddy logs:
+1. Check that your Cloudflare API token has the correct permissions (Zone:Read and DNS:Edit)
+
+2. Verify Caddy can connect to Cloudflare:
    ```bash
-   docker-compose logs caddy
+   docker-compose logs caddy | grep -i cloudflare
    ```
 
-2. Test if the 3x-ui service is accessible:
+3. Make sure your domain's DNS is properly configured in Cloudflare:
+   - Set DNS records for service.foodshare.club to point to your server IP
+   - Ensure SSL/TLS settings are set to "Full" in Cloudflare dashboard
+
+4. Check for JavaScript errors in the browser console and ensure URLs are being properly rewritten:
    ```bash
-   curl -v http://3x-ui:54321/BXv8SI7gBe
+   # Verify URL rewriting is working
+   curl -v "https://service.foodshare.club/BXv8SI7gBe" | grep -i 2053
    ```
 
-3. Verify that assets are being properly served:
+5. Make sure 3x-ui container is properly connected to Caddy networks:
    ```bash
-   curl -I http://service.foodshare.club/BXv8SI7gBe/assets/vue/vue.min.js
-   ```
-
-4. Check if Docker networks are properly set up:
-   ```bash
-   docker network inspect web
-   docker network inspect no-zero-trust-cloudflared
-   ```
-
-5. Make sure 3x-ui is connected to the appropriate networks:
-   ```bash
-   docker inspect 3x-ui | grep -A 10 "Networks"
+   docker inspect 3x-ui | grep -A 20 "Networks"
    ``` 
