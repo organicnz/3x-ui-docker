@@ -139,7 +139,7 @@ jobs:
           ssh -o BatchMode=yes -o ConnectTimeout=10 ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             echo '✅ SSH connection successful'
           EOL
-      - name: Initialize Git repository on server
+      - name: Fix Git Repository
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on error
@@ -148,174 +148,224 @@ jobs:
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             REPO_URL="https://github.com/${{ github.repository }}.git"
             
-            echo "Current working directory: $(pwd)"
-            echo "Checking if $DEPLOY_PATH exists..."
-            
             # Colors for better output readability
             RED='\033[0;31m'
             GREEN='\033[0;32m'
             YELLOW='\033[1;33m'
+            BLUE='\033[0;34m'
             NC='\033[0m' # No Color
             
-            echo -e "${GREEN}==== 3x-ui VPN Git Repository Fix ====${NC}"
+            echo -e "${BLUE}==== Fixing Git Repository ====${NC}"
             
-            # Ensure deploy path exists
+            # Ensure directory exists
             if [ ! -d "$DEPLOY_PATH" ]; then
-              echo -e "${YELLOW}Creating directory $DEPLOY_PATH${NC}"
+              echo -e "${YELLOW}Directory $DEPLOY_PATH doesn't exist. Creating...${NC}"
               mkdir -p "$DEPLOY_PATH"
             fi
             
-            # Backup important data first
-            echo -e "${YELLOW}Backing up important data${NC}"
-            BACKUP_DIR="/tmp/3x-ui-backup-$(date +%s)"
-            mkdir -p "$BACKUP_DIR"
-            
-            if [ -d "$DEPLOY_PATH" ]; then
-              cd "$DEPLOY_PATH"
-              
-              # Backup essential files
-              if [ -f ".env" ]; then
-                cp .env "$BACKUP_DIR/"
-                echo -e "${GREEN}Backed up .env file${NC}"
-              fi
-              
-              if [ -d "db" ]; then
-                mkdir -p "$BACKUP_DIR/db"
-                cp -r db/* "$BACKUP_DIR/db/" 2>/dev/null || true
-                echo -e "${GREEN}Backed up database files${NC}"
-              fi
-              
-              if [ -d "logs" ]; then
-                mkdir -p "$BACKUP_DIR/logs"
-                cp -r logs/* "$BACKUP_DIR/logs/" 2>/dev/null || true
-                echo -e "${GREEN}Backed up log files${NC}"
-              fi
-              
-              if [ -d "cert" ]; then
-                mkdir -p "$BACKUP_DIR/cert"
-                cp -r cert/* "$BACKUP_DIR/cert/" 2>/dev/null || true
-                echo -e "${GREEN}Backed up certificate files${NC}"
-              fi
-            fi
-            
-            # Check if it's a functioning git repository
+            # Go to directory
             cd "$DEPLOY_PATH" || {
-              echo -e "${RED}Failed to cd to $DEPLOY_PATH, creating it${NC}"
-              mkdir -p "$DEPLOY_PATH"
-              cd "$DEPLOY_PATH"
+              echo -e "${RED}Failed to cd to $DEPLOY_PATH${NC}"
+              exit 1
+            }
+
+            # Check if .git directory exists
+            if [ ! -d ".git" ]; then
+              echo -e "${YELLOW}No Git repository found. Initializing...${NC}"
+              git init
+              git remote add origin "$REPO_URL"
+            else
+              echo -e "${GREEN}Git repository exists. Checking configuration...${NC}"
+              
+              # Check if origin is set correctly
+              CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+              if [ "$CURRENT_REMOTE" != "$REPO_URL" ]; then
+                echo -e "${YELLOW}Remote URL is incorrect or missing. Fixing...${NC}"
+                git remote remove origin 2>/dev/null || true
+                git remote add origin "$REPO_URL"
+              fi
+              
+              # Check if Git is in a detached HEAD state
+              if git symbolic-ref -q HEAD >/dev/null; then
+                echo -e "${GREEN}Repository has a proper HEAD reference.${NC}"
+              else
+                echo -e "${YELLOW}Repository is in detached HEAD state. Fixing...${NC}"
+                # Reset to main branch
+                git checkout -b temp_branch
+                git branch -D main 2>/dev/null || true
+                git checkout -b main
+                git branch -D temp_branch
+              fi
+            fi
+            
+            # Fetch latest changes
+            echo -e "${BLUE}Fetching latest changes...${NC}"
+            git fetch origin || {
+              echo -e "${RED}Failed to fetch. Trying with --depth=1...${NC}"
+              git fetch origin --depth=1
             }
             
-            # Check if .git directory exists and is working
-            if [ -d ".git" ]; then
-              echo -e "${GREEN}Git repository exists, checking if it's working...${NC}"
-              if ! git status &> /dev/null; then
-                echo -e "${RED}Git repository is broken, recreating...${NC}"
-                cd ..
-                mv "$DEPLOY_PATH" "${DEPLOY_PATH}_old_$(date +%s)"
-                git clone "$REPO_URL" "$DEPLOY_PATH"
-                cd "$DEPLOY_PATH"
-              else
-                echo -e "${GREEN}Git repository is working correctly${NC}"
-                # Fetch and reset to ensure clean state
-                git fetch --all
-                git reset --hard origin/main
-              fi
+            # Check if we have the main branch
+            if ! git show-ref --verify --quiet refs/heads/main; then
+              echo -e "${YELLOW}Creating main branch...${NC}"
+              git checkout -b main origin/main || {
+                echo -e "${RED}Failed to checkout main branch. Creating empty main branch...${NC}"
+                git checkout --orphan main
+                git reset --hard
+                git pull origin main --allow-unrelated-histories || true
+              }
             else
-              echo -e "${YELLOW}No git repository found, initializing...${NC}"
-              # Check if the directory is empty
-              if [ "$(ls -A | grep -v '.git')" ]; then
-                echo -e "${YELLOW}Directory not empty, backing up and initializing git${NC}"
-                # Move everything to a temp folder except .git
-                TEMP_DIR="/tmp/3x-ui-content-$(date +%s)"
-                mkdir -p "$TEMP_DIR"
-                find . -mindepth 1 -maxdepth 1 -not -path "./\.git*" -exec mv {} "$TEMP_DIR/" \;
+              echo -e "${GREEN}Main branch exists. Checking out...${NC}"
+              git checkout main
+            fi
+            
+            # Discard local changes
+            echo -e "${YELLOW}Discarding any local changes...${NC}"
+            git reset --hard HEAD || true
+            git clean -fdx || true
+            
+            # Pull latest changes
+            echo -e "${BLUE}Pulling latest changes...${NC}"
+            git pull origin main || {
+              echo -e "${RED}Failed to pull. Trying with --allow-unrelated-histories...${NC}"
+              git pull origin main --allow-unrelated-histories || {
+                echo -e "${RED}Failed to pull even with --allow-unrelated-histories.${NC}"
+                echo -e "${YELLOW}Recreating repository from scratch...${NC}"
                 
-                # Initialize git
-                git init
-                git remote add origin "$REPO_URL"
-                git fetch --all
-                git reset --hard origin/main
+                # Backup existing data
+                cd ..
+                TIMESTAMP=$(date +%s)
+                BACKUP_DIR="/tmp/3x-ui-backup-$TIMESTAMP"
+                mkdir -p "$BACKUP_DIR"
                 
-                # Move back important files
-                if [ -d "$TEMP_DIR" ]; then
-                  # Only move back .env, db/, logs/, and cert/
-                  if [ -f "$TEMP_DIR/.env" ]; then
-                    cp "$TEMP_DIR/.env" .
-                  fi
-                  
-                  for dir in db logs cert; do
-                    if [ -d "$TEMP_DIR/$dir" ]; then
-                      mkdir -p "$dir"
-                      cp -r "$TEMP_DIR/$dir/"* "$dir/" 2>/dev/null || true
-                    fi
-                  done
+                if [ -d "$DEPLOY_PATH/db" ]; then
+                  cp -r "$DEPLOY_PATH/db" "$BACKUP_DIR/"
+                fi
+                
+                if [ -d "$DEPLOY_PATH/cert" ]; then
+                  cp -r "$DEPLOY_PATH/cert" "$BACKUP_DIR/"
+                fi
+                
+                if [ -d "$DEPLOY_PATH/logs" ]; then
+                  cp -r "$DEPLOY_PATH/logs" "$BACKUP_DIR/"
+                fi
+                
+                if [ -f "$DEPLOY_PATH/.env" ]; then
+                  cp "$DEPLOY_PATH/.env" "$BACKUP_DIR/"
+                fi
+                
+                # Remove and clone fresh
+                mv "$DEPLOY_PATH" "${DEPLOY_PATH}_broken_$TIMESTAMP"
+                git clone "$REPO_URL" "$DEPLOY_PATH"
+                
+                # Restore data
+                cd "$DEPLOY_PATH"
+                
+                # Restore database files
+                if [ -d "$BACKUP_DIR/db" ]; then
+                  cp -r "$BACKUP_DIR/db/"* db/ 2>/dev/null || true
+                else
+                  mkdir -p db
+                fi
+                
+                # Restore certificate files
+                if [ -d "$BACKUP_DIR/cert" ]; then
+                  cp -r "$BACKUP_DIR/cert/"* cert/ 2>/dev/null || true
+                else
+                  mkdir -p cert
+                fi
+                
+                # Restore log files
+                if [ -d "$BACKUP_DIR/logs" ]; then
+                  cp -r "$BACKUP_DIR/logs/"* logs/ 2>/dev/null || true
+                else
+                  mkdir -p logs
+                fi
+                
+                # Restore .env file
+                if [ -f "$BACKUP_DIR/.env" ]; then
+                  cp "$BACKUP_DIR/.env" .env
+                fi
+                
+                echo -e "${GREEN}Repository recreated from scratch and data restored.${NC}"
+              }
+            }
+            
+            # Verify repository has files
+            echo -e "${BLUE}Verifying repository contents...${NC}"
+            FILE_COUNT=$(find . -type f -not -path "./.git/*" | wc -l)
+            
+            if [ "$FILE_COUNT" -lt 5 ]; then
+              echo -e "${RED}Repository has very few files ($FILE_COUNT). Something may be wrong.${NC}"
+              ls -la
+            else
+              echo -e "${GREEN}Repository has $FILE_COUNT files. Looks good!${NC}"
+            fi
+            
+            # Check for docker-compose.yml
+            if [ -f "docker-compose.yml" ]; then
+              echo -e "${GREEN}docker-compose.yml exists. Repository appears to be valid.${NC}"
+            else
+              echo -e "${RED}docker-compose.yml is missing! Repository may be incomplete.${NC}"
+              
+              # Try again with a clean clone
+              echo -e "${YELLOW}Attempting a clean clone...${NC}"
+              cd ..
+              TIMESTAMP=$(date +%s)
+              mv "$DEPLOY_PATH" "${DEPLOY_PATH}_incomplete_$TIMESTAMP"
+              git clone "$REPO_URL" "$DEPLOY_PATH"
+              
+              cd "$DEPLOY_PATH"
+              if [ -f "docker-compose.yml" ]; then
+                echo -e "${GREEN}Clean clone successful! docker-compose.yml now exists.${NC}"
+                
+                # Restore data from previous attempt
+                OLD_PATH="${DEPLOY_PATH}_incomplete_$TIMESTAMP"
+                
+                mkdir -p db cert logs
+                
+                # Copy data from previous attempt
+                if [ -d "$OLD_PATH/db" ]; then
+                  cp -r "$OLD_PATH/db/"* db/ 2>/dev/null || true
+                fi
+                
+                if [ -d "$OLD_PATH/cert" ]; then
+                  cp -r "$OLD_PATH/cert/"* cert/ 2>/dev/null || true
+                fi
+                
+                if [ -d "$OLD_PATH/logs" ]; then
+                  cp -r "$OLD_PATH/logs/"* logs/ 2>/dev/null || true
+                fi
+                
+                if [ -f "$OLD_PATH/.env" ]; then
+                  cp "$OLD_PATH/.env" .env
                 fi
               else
-                echo -e "${YELLOW}Directory empty, cloning repository${NC}"
-                git init
-                git remote add origin "$REPO_URL"
-                git fetch --all
-                git reset --hard origin/main
+                echo -e "${RED}Clean clone also failed. Manual intervention may be required.${NC}"
+                exit 1
               fi
             fi
             
-            # Restore from backup if needed
-            if [ -d "$BACKUP_DIR" ]; then
-              echo -e "${YELLOW}Restoring from backup...${NC}"
-              
-              # Restore .env
-              if [ -f "$BACKUP_DIR/.env" ]; then
-                cp "$BACKUP_DIR/.env" .env
-                echo -e "${GREEN}Restored .env file${NC}"
-              fi
-              
-              # Restore database
-              if [ -d "$BACKUP_DIR/db" ] && [ "$(ls -A "$BACKUP_DIR/db" 2>/dev/null)" ]; then
-                mkdir -p db
-                cp -r "$BACKUP_DIR/db/"* db/ 2>/dev/null || true
-                echo -e "${GREEN}Restored database files${NC}"
-              fi
-              
-              # Restore logs
-              if [ -d "$BACKUP_DIR/logs" ] && [ "$(ls -A "$BACKUP_DIR/logs" 2>/dev/null)" ]; then
-                mkdir -p logs
-                cp -r "$BACKUP_DIR/logs/"* logs/ 2>/dev/null || true
-                echo -e "${GREEN}Restored log files${NC}"
-              fi
-              
-              # Restore certificates
-              if [ -d "$BACKUP_DIR/cert" ] && [ "$(ls -A "$BACKUP_DIR/cert" 2>/dev/null)" ]; then
-                mkdir -p cert
-                cp -r "$BACKUP_DIR/cert/"* cert/ 2>/dev/null || true
-                echo -e "${GREEN}Restored certificate files${NC}"
-              fi
-            fi
-            
-            # Ensure the necessary directories exist
+            # Ensure required directories exist
             echo -e "${YELLOW}Ensuring required directories exist...${NC}"
             mkdir -p db cert logs cert/service.foodshare.club
             
-            # Ensure database file exists
-            if [ ! -f "db/x-ui.db" ]; then
-              echo -e "${YELLOW}Creating db/x-ui.db placeholder...${NC}"
-              touch db/x-ui.db
-            fi
-            
-            # Ensure proper permissions
-            echo -e "${YELLOW}Setting correct permissions...${NC}"
+            # Set proper permissions
+            echo -e "${YELLOW}Setting proper permissions...${NC}"
             chmod -R 755 .
             chmod -R 777 logs
-            chmod 644 db/x-ui.db
+            if [ -f "db/x-ui.db" ]; then
+              chmod 644 db/x-ui.db
+            else
+              touch db/x-ui.db
+              chmod 644 db/x-ui.db
+            fi
             
-            # Verify repository setup
-            echo -e "${GREEN}Repository has been fixed successfully!${NC}"
-            echo "Current directory: $(pwd)"
-            echo "Repository content:"
-            ls -la
-            echo "Git status:"
+            echo -e "${GREEN}Git repository is now fixed and ready for deployment!${NC}"
+            echo -e "${BLUE}Repository information:${NC}"
+            git log -n 3 --oneline
             git status
-            echo "Latest commits:"
-            git log -n 3 --oneline || echo "No commits yet"
+            ls -la
           EOL
       - name: Install Docker if not installed
         run: |
