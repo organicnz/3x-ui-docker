@@ -8,7 +8,9 @@ services:
     restart: unless-stopped
     ports:
       - 54321:54321  # Admin panel
-      - 2053:2053    # VPN panel custom port
+      # Don't expose 2053 directly to the internet
+      # Instead route all traffic through Caddy
+      # - 2053:2053    # VPN panel custom port
       # Add any other ports your VPN protocols require
       # - port:port
     volumes:
@@ -25,6 +27,8 @@ services:
       - BASE_URL=https://service.foodshare.club
       # Force using assets from BASE_URL without port
       - ASSETS_OVERRIDE=true
+      # Run in secure mode to enforce HTTPS
+      - XUI_ENFORCE_HTTPS=true
     healthcheck:
       test: [CMD, curl, -f, http://localhost:54321/login]
       interval: 30s

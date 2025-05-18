@@ -18,8 +18,8 @@ service.foodshare.club {
 
     # Proper headers without browsing-topics
     header {
-        # Remove Permissions-Policy browsing-topics to avoid warnings
-        Permissions-Policy "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=(), conversion-measurement=(), focus-without-user-activation=(), hid=(), idle-detection=(), serial=(), sync-script=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
+        # Set a safe Permissions-Policy without problematic directives
+        Permissions-Policy "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=(), focus-without-user-activation=(), hid=(), idle-detection=(), serial=(), sync-script=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
         
         # Security headers
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -42,20 +42,29 @@ service.foodshare.club {
             header_up X-Real-IP {remote_host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto {scheme}
-            # Replace port 2053 with the domain in HTML responses
+            # Replace all port references in responses
             header_down Content-Type {http.response.header.Content-Type}
             replace_response "service.foodshare.club:2053" "service.foodshare.club"
             replace_response "https://service\.foodshare\.club:\d+/" "https://service.foodshare.club/"
         }
     }
 
-    # Handle all assets paths explicitly
+    # Special handling for direct port 2053 requests (handles redirect from asset URLs)
+    @port_2053 host service.foodshare.club:2053
+    handle @port_2053 {
+        uri strip_prefix :2053
+        redir * https://service.foodshare.club{uri} permanent
+    }
+
+    # Handle assets specifically to override port references
     handle_path /BXv8SI7gBe/assets/* {
         reverse_proxy 3x-ui:54321 {
             header_up Host {host}
             header_up X-Real-IP {remote_host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto {scheme}
+            # Make sure asset URLs don't include port
+            replace_response "service.foodshare.club:2053" "service.foodshare.club"
         }
     }
 

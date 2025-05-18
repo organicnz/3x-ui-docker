@@ -460,36 +460,51 @@ jobs:
               fi
             fi
             
-            # Set proper permissions
-            echo -e "${YELLOW}Setting proper permissions on certificates...${NC}"
-            chmod 644 "$CERT_DIR/fullchain.pem"
-            chmod 600 "$CERT_DIR/privkey.pem"
-            
-            # Verify certificates
-            echo -e "${BLUE}Verifying certificates...${NC}"
-            if openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -text &>/dev/null; then
-              echo -e "${GREEN}Certificate is valid.${NC}"
-              openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -subject -issuer -dates
-            else
-              echo -e "${RED}Certificate verification failed.${NC}"
-            fi
-            
             # Make a symbolic link to the service.foodshare.club directory in the right place
             echo -e "${YELLOW}Ensuring certificates are accessible to 3x-ui container...${NC}"
-            if [ ! -d "/root/cert" ]; then
-              echo -e "${YELLOW}Container root certificate directory doesn't exist. This is fine in workflow.${NC}"
+            
+            # Create directory structure first
+            mkdir -p "$DEPLOY_PATH/cert"
+            mkdir -p "$DEPLOY_PATH/cert/$DOMAIN"
+            
+            # Check if certificates exist in expected location
+            if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
+              echo -e "${GREEN}Certificates found in domain directory: $CERT_DIR${NC}"
+              
+              # Copy certificates to the root level as well
+              cp -f "$CERT_DIR/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
+              cp -f "$CERT_DIR/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
+              echo -e "${GREEN}Certificates copied to cert root directory${NC}"
+            else
+              echo -e "${RED}Certificates not found in domain directory.${NC}"
+              
+              # Check if they exist in the root
+              if [ -f "$DEPLOY_PATH/cert/fullchain.pem" ] && [ -f "$DEPLOY_PATH/cert/privkey.pem" ]; then
+                echo -e "${YELLOW}Certificates found in root directory, copying to domain directory...${NC}"
+                cp -f "$DEPLOY_PATH/cert/fullchain.pem" "$CERT_DIR/fullchain.pem"
+                cp -f "$DEPLOY_PATH/cert/privkey.pem" "$CERT_DIR/privkey.pem"
+                echo -e "${GREEN}Certificates copied from root to domain directory${NC}"
+              else
+                echo -e "${RED}No certificates found. Generating new ones...${NC}"
+                
+                # Generate self-signed certificates in both locations
+                openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                  -keyout "$CERT_DIR/privkey.pem" \
+                  -out "$CERT_DIR/fullchain.pem" \
+                  -subj "/CN=$DOMAIN" \
+                  -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053"
+                
+                # Also copy to root level
+                cp -f "$CERT_DIR/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
+                cp -f "$CERT_DIR/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
+                echo -e "${GREEN}New certificates generated and copied to both locations${NC}"
+              fi
             fi
             
-            # Finally, create symlink from cert/domain/ to cert/
-            # This creates fallback certs in the root cert directory in case the container 
-            # looks there instead of the subfolder
-            if [ ! -f "$DEPLOY_PATH/cert/fullchain.pem" ]; then
-              echo -e "${YELLOW}Creating fallback symlinks in cert directory...${NC}"
-              ln -sf "$CERT_DIR/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem" || cp "$CERT_DIR/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
-              ln -sf "$CERT_DIR/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem" || cp "$CERT_DIR/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
-            fi
-            
-            echo -e "${GREEN}Certificate setup complete!${NC}"
+            # Set proper permissions for both locations
+            chmod 644 "$CERT_DIR/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
+            chmod 600 "$CERT_DIR/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
+            echo -e "${GREEN}Certificate permissions set correctly${NC}"
           EOL
       - name: Install Docker if not installed
         run: |
