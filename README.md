@@ -414,3 +414,34 @@ REPO_OWNER=github-username
 REPO_NAME=repository-name
 ```
 To set these up automatically, run `./scripts/setup-env.sh`.
+
+## Local Development Setup
+
+For local development and testing, the following modifications have been made to the docker-compose.yml file:
+
+1. **Local Bridge Network**: Using a local bridge network instead of external networks
+   - No need to create external networks before running
+   - Self-contained development environment
+
+2. **Simplified Configuration**: 
+   - `BASE_URL` set to `http://localhost`
+   - `XUI_ENFORCE_HTTPS` set to `false`
+   - Removed health check that required unavailable tools in the container
+
+3. **Quick Start for Development**:
+   ```bash
+   # Create necessary directories
+   mkdir -p db cert/nginx logs
+   
+   # Start the container
+   docker-compose up -d
+   
+   # Access the admin panel
+   open http://localhost:54321
+   ```
+
+4. **Default Credentials**:
+   - Username: `admin`
+   - Password: `admin`
+   
+Remember to change the default credentials immediately after first login!
