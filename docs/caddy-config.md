@@ -1,25 +1,40 @@
 # Caddy Configuration for 3x-ui VPN Service
 
 ## Overview
+This file contains the recommended Caddy configuration for the 3x-ui VPN service. It addresses common issues like:
 
-This document provides the necessary Caddy configuration to proxy traffic to the 3x-ui VPN service. Add these snippets to your existing Caddyfile.
+- SSL certificate management
+- Security headers
+- Correct proxy settings
+- Browsing-topics header errors
+
+## Installation
+
+1. Copy this configuration to your Caddy server.
+2. Reload Caddy: `caddy reload`
 
 ## Caddyfile Configuration
 
-Add the following to your `Caddyfile`:
-
 ```caddyfile
-# VPN Admin Panel (service.foodshare.club)
+{
+    # Global options block
+    email admin@example.com  # Replace with your email
+    # Optional staging lets encrypt for testing. Comment out for production.
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# VPN Admin Panel
 service.foodshare.club {
     # TLS configuration with Cloudflare DNS validation
     tls {
-        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+        # Use the following line if you have Cloudflare API token
+        # dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
 
     # Proper headers without browsing-topics
     header {
-        # Set a safe Permissions-Policy without problematic directives
-        Permissions-Policy "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=(), focus-without-user-activation=(), hid=(), idle-detection=(), serial=(), sync-script=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
+        # Remove Permissions-Policy browsing-topics to avoid warnings
+        Permissions-Policy "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=(), conversion-measurement=(), focus-without-user-activation=(), hid=(), idle-detection=(), interest-cohort=(), serial=(), sync-script=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
         
         # Security headers
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -27,106 +42,54 @@ service.foodshare.club {
         X-Frame-Options "SAMEORIGIN"
         Referrer-Policy "strict-origin-when-cross-origin"
         
-        # Disable caching for admin panel assets to prevent stale resources
+        # Cache control for dynamic content
         Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate"
         Pragma "no-cache"
         Expires "0"
     }
 
-    # URL rewrite for port references in HTML/JS
-    @rewrite_port_refs path /BXv8SI7gBe*
-    handle @rewrite_port_refs {
-        # Rewrite HTML responses to fix port references
-        reverse_proxy 3x-ui:54321 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            # Replace all port references in responses
-            header_down Content-Type {http.response.header.Content-Type}
-            replace_response "service.foodshare.club:2053" "service.foodshare.club"
-            replace_response "https://service\.foodshare\.club:\d+/" "https://service.foodshare.club/"
-        }
+    # Reverse proxy to 3x-ui
+    reverse_proxy localhost:2053 {
+        # Health checks
+        health_path /BXv8SI7gBe/
+        health_interval 30s
+        
+        # Header adjustments
+        header_up Host {http.request.host}
+        header_up X-Real-IP {http.request.remote}
+        header_up X-Forwarded-For {http.request.remote}
+        header_up X-Forwarded-Proto {http.request.scheme}
     }
 
-    # Special handling for direct port 2053 requests (handles redirect from asset URLs)
-    @port_2053 host service.foodshare.club:2053
-    handle @port_2053 {
-        uri strip_prefix :2053
-        redir * https://service.foodshare.club{uri} permanent
-    }
-
-    # Handle assets specifically to override port references
-    handle_path /BXv8SI7gBe/assets/* {
-        reverse_proxy 3x-ui:54321 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            # Make sure asset URLs don't include port
-            replace_response "service.foodshare.club:2053" "service.foodshare.club"
-        }
-    }
-
-    # Proxy to XRay services
-    handle {
-        reverse_proxy 3x-ui:2053 {
-            # Support WebSocket
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up Upgrade {http.request.header.Upgrade}
-            header_up Connection {http.request.header.Connection}
-        }
-    }
-
-    # Log configuration
+    # Logging
     log {
-        output file /data/logs/service.foodshare.club.log {
+        output file /var/log/caddy/service.foodshare.club.log {
             roll_size 10mb
             roll_keep 5
-            roll_keep_for 720h
         }
     }
 }
 ```
 
-## Implementation Steps
-
-1. Update your Caddyfile with the configuration above
-2. Reload Caddy configuration:
-   ```bash
-   docker-compose exec caddy caddy reload
-   ```
-
-3. Verify the configuration is working:
-   ```bash
-   docker-compose exec caddy caddy validate
-   ```
-
 ## Troubleshooting
 
-If you're still seeing ERR_CERT_AUTHORITY_INVALID errors:
+### Headers Issues
+If you encounter warnings about unrecognized features in the Permissions-Policy header:
 
-1. Check that your Cloudflare API token has the correct permissions (Zone:Read and DNS:Edit)
+1. Remove the problematic feature from the header list
+2. Reload Caddy with `caddy reload`
 
-2. Verify Caddy can connect to Cloudflare:
-   ```bash
-   docker-compose logs caddy | grep -i cloudflare
-   ```
+### Certificate Issues
+If you encounter certificate issues:
 
-3. Make sure your domain's DNS is properly configured in Cloudflare:
-   - Set DNS records for service.foodshare.club to point to your server IP
-   - Ensure SSL/TLS settings are set to "Full" in Cloudflare dashboard
+1. Ensure Caddy has proper permissions to issue certificates
+2. Check Caddy logs: `tail -f /var/log/caddy/service.foodshare.club.log`
+3. For Cloudflare DNS validation, ensure your API token has proper permissions
 
-4. Check for JavaScript errors in the browser console and ensure URLs are being properly rewritten:
-   ```bash
-   # Verify URL rewriting is working
-   curl -v "https://service.foodshare.club/BXv8SI7gBe" | grep -i 2053
-   ```
+## Best Practices
 
-5. Make sure 3x-ui container is properly connected to Caddy networks:
-   ```bash
-   docker inspect 3x-ui | grep -A 20 "Networks"
-   ``` 
+1. Always use HTTPS
+2. Regularly update your Caddy server
+3. Set up proper backup for your certificates
+4. Use strong security headers
+5. Configure proper logging for troubleshooting 

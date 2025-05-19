@@ -48,6 +48,15 @@ fi
 print_status "green" "Ensuring required directories exist..."
 mkdir -p db cert logs cert/service.foodshare.club
 
+# Fix certificates
+print_status "green" "Ensuring SSL certificates are properly configured..."
+if [ -f "scripts/fix_certificates.sh" ]; then
+  chmod +x scripts/fix_certificates.sh
+  ./scripts/fix_certificates.sh
+else
+  print_status "yellow" "Certificate fix script not found. Skipping certificate setup."
+fi
+
 # Pull latest images
 print_status "green" "Pulling latest Docker images..."
 docker-compose pull
