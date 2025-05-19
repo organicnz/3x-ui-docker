@@ -445,3 +445,64 @@ For local development and testing, the following modifications have been made to
 Remember to change the default credentials immediately after first login!
 
 **Note**: The panel uses a self-signed certificate, so your browser may show a security warning. This is expected in a local development environment.
+
+## Environment Variables and GitHub Secrets
+
+This project uses environment variables to configure the 3x-ui VPN service. For proper security, sensitive values are stored as GitHub secrets and injected during deployment.
+
+### Required GitHub Secrets
+
+For CI/CD to work correctly, set up the following GitHub secrets:
+
+- `PANEL_PATH`: The secure path for accessing the admin panel (e.g., `BXv8SI7gBe`)
+- `HTTPS_PORT`: Port for accessing the admin interface (default: `2053`)
+- `VPN_DOMAIN`: The domain name for your VPN service (e.g., `service.foodshare.club`)
+- `ADMIN_EMAIL`: Email address for certificate notifications
+- `XRAY_VMESS_AEAD_FORCED`: Whether to force AEAD for VMESS (default: `false`)
+- `XUI_USERNAME`: Admin username for 3x-ui panel
+- `XUI_PASSWORD`: Admin password for 3x-ui panel
+- `JWT_SECRET`: Secret key for JWT token generation
+
+### Deployment Secrets
+
+- `SSH_PRIVATE_KEY`: SSH private key for deployment
+- `SSH_KNOWN_HOSTS`: SSH known hosts for secure connection
+- `SERVER_USER`: Username for SSH connection
+- `SERVER_HOST`: Hostname or IP address of the server
+- `DEPLOY_PATH`: Path where the project is deployed on the server
+
+### Local Development
+
+For local development, you can create a `.env` file based on the following template:
+
+```env
+# 3x-ui VPN Service Configuration - Local Development
+PANEL_PATH=BXv8SI7gBe
+HTTPS_PORT=2053
+VPN_DOMAIN=service.foodshare.club
+ADMIN_EMAIL=admin@example.com
+XRAY_VMESS_AEAD_FORCED=false
+XUI_USERNAME=admin
+XUI_PASSWORD=admin
+JWT_SECRET=change_me_to_a_secure_random_string
+```
+
+### CI/CD Workflow
+
+The GitHub Actions workflow automatically:
+
+1. Generates a `.env` file from GitHub secrets
+2. Uses the environment variables in the Docker Compose configuration
+3. Deploys the service to the specified server
+
+This approach ensures that sensitive values are never committed to the repository and are securely passed to the application during deployment.
+
+## Running the Service
+
+To start the service locally:
+
+```bash
+docker-compose up -d
+```
+
+Access the admin panel at http://localhost:2053/BXv8SI7gBe/ (replace with your configured values).
