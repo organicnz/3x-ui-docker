@@ -20,13 +20,12 @@ if ! docker ps | grep -q "3x-ui"; then
 fi
 
 # Define the panel URL
-PANEL_URL="https://localhost:54321/BXv8SI7gBe/"
+PANEL_URL="http://localhost:2053/BXv8SI7gBe/"
 
 echo -e "${GREEN}Opening panel at:${NC} ${PANEL_URL}"
-echo -e "${YELLOW}Default credentials:${NC}"
-echo -e "  ${BLUE}Username:${NC} admin"
-echo -e "  ${BLUE}Password:${NC} admin"
-echo -e "${RED}IMPORTANT: Change the default credentials immediately after login!${NC}"
+echo -e "${YELLOW}Custom credentials:${NC}"
+echo -e "  ${BLUE}Username:${NC} organic"
+echo -e "  ${BLUE}Password:${NC} kjwegfwkeyyRDHJKH123"
 
 # Open the panel in the default browser
 if [[ "$OSTYPE" == "darwin"* ]]; then

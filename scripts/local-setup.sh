@@ -31,11 +31,10 @@ echo -e "${GREEN}Container started.${NC}"
 # Check if the container is running
 if docker ps | grep -q "3x-ui"; then
   echo -e "${GREEN}Container is running successfully.${NC}"
-  echo -e "${BLUE}Access the admin panel at:${NC} https://localhost:54321/BXv8SI7gBe/"
-  echo -e "${BLUE}Default credentials:${NC}"
-  echo -e "  Username: ${CYAN}admin${NC}"
-  echo -e "  Password: ${CYAN}admin${NC}"
-  echo -e "${RED}IMPORTANT: Change the default credentials immediately after login!${NC}"
+  echo -e "${BLUE}Access the admin panel at:${NC} http://localhost:2053/BXv8SI7gBe/"
+  echo -e "${BLUE}Custom credentials:${NC}"
+  echo -e "  Username: ${CYAN}organic${NC}"
+  echo -e "  Password: ${CYAN}kjwegfwkeyyRDHJKH123${NC}"
 else
   echo -e "${RED}Error: Container failed to start. Check logs with 'docker-compose logs'.${NC}"
   exit 1
