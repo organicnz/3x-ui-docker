@@ -117,7 +117,7 @@ jobs:
           fi
           cat docker-compose.yml | python3 -c "import sys, yaml; yaml.safe_load(sys.stdin)" && echo "✅ Valid YAML"
           grep -q "3x-ui:" docker-compose.yml && echo "✅ 3x-ui service found"
-          grep -q "54321:54321" docker-compose.yml && echo "✅ Admin panel port (54321) configured"
+          grep -q "\\${HTTPS_PORT}:2053" docker-compose.yml && echo "✅ Admin panel port (${HTTPS_PORT}:2053) configured"
 
   setup:
     name: 🚀 Setup Server
