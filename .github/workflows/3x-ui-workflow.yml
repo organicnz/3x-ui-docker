@@ -815,16 +815,19 @@ jobs:
             chmod 644 "$DEPLOY_PATH/cert/service.foodshare.club/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
             chmod 600 "$DEPLOY_PATH/cert/service.foodshare.club/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
             
-            docker-compose restart 3x-ui
+            # Execute our deployment helper script
+            chmod +x scripts/deploy.sh
+            ./scripts/deploy.sh
             
-            echo "⏱️ Waiting for container to start..."
-            sleep 5
-            
-            echo "📋 Container status:"
-            docker-compose ps
-            
-            echo "📋 Container logs (last 20 lines):"
-            docker-compose logs --tail=20 3x-ui
+            # Configure firewall if needed
+            if ! docker-compose ps | grep -q "3x-ui.*Up"; then
+              echo "⚠️ Container may not be running correctly, checking firewall..."
+              sudo chmod +x scripts/configure_firewall.sh
+              sudo ./scripts/configure_firewall.sh
+              
+              # Try restarting again
+              ./scripts/deploy.sh
+            fi
           EOL
       - name: Verify deployment
         run: |
