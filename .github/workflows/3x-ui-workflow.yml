@@ -1,7 +1,7 @@
 permissions:
   contents: read
 
-name: 3x-ui VPN Service Management
+name: 3x-ui VPN Service Managemen
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ on:
 jobs:
   debug_info:
     name: 🐛 Debug Workflow Info
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-lates
     steps:
       - name: Display Trigger Info
         env:
@@ -40,7 +40,7 @@ jobs:
 
   cert_fix:
     name: 🚑 Emergency Certificate Fix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-lates
     if: false  # Disabled by default, use separate workflow for cert fixes
     steps:
       - name: Set up SSH
@@ -55,42 +55,42 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on errors
-            
+
             # Define variables
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             DOMAIN="${{ secrets.VPN_DOMAIN }}"
             CERT_DIR="$DEPLOY_PATH/cert/$DOMAIN"
-            
+
             echo "🔍 Checking current container status..."
             cd "$DEPLOY_PATH"
             docker-compose ps
-            
+
             echo "📁 Creating certificate directory..."
             mkdir -p "$CERT_DIR"
-            
+
             echo "🔑 Creating self-signed certificates..."
-            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-              -keyout "$CERT_DIR/privkey.pem" \
-              -out "$CERT_DIR/fullchain.pem" \
-              -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048
+              -keyout "$CERT_DIR/privkey.pem"
+              -out "$CERT_DIR/fullchain.pem"
+              -subj "/CN=$DOMAIN/O=3x-ui/C=US"
               -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053"
-            
+
             echo "🔒 Setting permissions..."
             chmod 644 "$CERT_DIR/fullchain.pem"
             chmod 600 "$CERT_DIR/privkey.pem"
-            
+
             echo "🔄 Restarting 3x-ui container..."
             docker-compose restart 3x-ui
-            
+
             echo "✅ Certificate fix complete!"
             echo "📋 Container status after fix:"
             docker-compose ps
-            
+
             echo "📋 Certificate details:"
             openssl x509 -noout -text -in "$CERT_DIR/fullchain.pem" | grep -E "Subject:|Issuer:|Not Before:|Not After :|DNS:"
-            
+
             echo "📋 Container logs (last 10 lines):"
-            sleep 5  # Give the container time to start
+            sleep 5  # Give the container time to star
             docker-compose logs --tail=10 3x-ui
           EOL
       - name: Add to workflow summary
@@ -104,7 +104,7 @@ jobs:
 
   validate:
     name: 🔍 Validate Configuration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-lates
     needs: debug_info
     steps:
       - name: Checkout code
@@ -122,7 +122,7 @@ jobs:
   setup:
     name: 🚀 Setup Server
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-lates
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -143,40 +143,53 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on error
-            
+
             # Define variables
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             REPO_URL="https://github.com/${{ github.repository }}.git"
-            
+
             # Colors for better output readability
             RED='\033[0;31m'
             GREEN='\033[0;32m'
             YELLOW='\033[1;33m'
             BLUE='\033[0;34m'
             NC='\033[0m' # No Color
-            
+
             echo -e "${BLUE}==== Fixing Git Repository ====${NC}"
-            
+
             # Ensure directory exists
             if [ ! -d "$DEPLOY_PATH" ]; then
               echo -e "${YELLOW}Directory $DEPLOY_PATH doesn't exist. Creating...${NC}"
               mkdir -p "$DEPLOY_PATH"
             fi
-            
+
             # Go to directory
             cd "$DEPLOY_PATH" || {
               echo -e "${RED}Failed to cd to $DEPLOY_PATH${NC}"
               exit 1
             }
 
+            # Check for uncommitted changes first and forcibly remove them
+            if [ -d ".git" ]; then
+              echo -e "${YELLOW}Checking for uncommitted changes...${NC}"
+              if git status --porcelain | grep -q .; then
+                echo -e "${YELLOW}Local changes detected. Forcibly discarding them...${NC}"
+                git reset --hard HEAD
+                git clean -fdx
+                echo -e "${GREEN}Local changes discarded.${NC}"
+              else
+                echo -e "${GREEN}No local changes detected.${NC}"
+              fi
+            fi
+
             # Check if .git directory exists
             if [ ! -d ".git" ]; then
               echo -e "${YELLOW}No Git repository found. Initializing...${NC}"
-              git init
+              git ini
               git remote add origin "$REPO_URL"
             else
               echo -e "${GREEN}Git repository exists. Checking configuration...${NC}"
-              
+
               # Check if origin is set correctly
               CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
               if [ "$CURRENT_REMOTE" != "$REPO_URL" ]; then
@@ -184,7 +197,7 @@ jobs:
                 git remote remove origin 2>/dev/null || true
                 git remote add origin "$REPO_URL"
               fi
-              
+
               # Check if Git is in a detached HEAD state
               if git symbolic-ref -q HEAD >/dev/null; then
                 echo -e "${GREEN}Repository has a proper HEAD reference.${NC}"
@@ -197,14 +210,14 @@ jobs:
                 git branch -D temp_branch
               fi
             fi
-            
+
             # Fetch latest changes
             echo -e "${BLUE}Fetching latest changes...${NC}"
             git fetch origin || {
               echo -e "${RED}Failed to fetch. Trying with --depth=1...${NC}"
               git fetch origin --depth=1
             }
-            
+
             # Check if we have the main branch
             if ! git show-ref --verify --quiet refs/heads/main; then
               echo -e "${YELLOW}Creating main branch...${NC}"
@@ -218,10 +231,11 @@ jobs:
               echo -e "${GREEN}Main branch exists. Checking out...${NC}"
               git checkout main
             fi
-            
+
             # Discard local changes
             echo -e "${YELLOW}Discarding any local changes...${NC}"
             git reset --hard HEAD
+            git clean -fdx
 
             # Validate repository
             echo -e "${YELLOW}Validating repository...${NC}"
@@ -280,7 +294,7 @@ jobs:
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
             chmod 600 .env
             echo "✅ Basic .env file created with GitHub secrets"
-            
+
             echo -e "${GREEN}Git repository is now fixed and ready for deployment!${NC}"
             echo -e "${BLUE}Repository information:${NC}"
             git log -n 3 --oneline
@@ -291,114 +305,114 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on error
-            
+
             # Define variables
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             DOMAIN="${{ secrets.VPN_DOMAIN }}"
             CERT_DIR="$DEPLOY_PATH/cert/$DOMAIN"
-            
-            # Colors for output
+
+            # Colors for outpu
             RED='\033[0;31m'
             GREEN='\033[0;32m'
             YELLOW='\033[1;33m'
             BLUE='\033[0;34m'
             NC='\033[0m' # No Color
-            
+
             echo -e "${BLUE}==== Setting up SSL Certificates ====${NC}"
-            
-            # Check if we're already in the deploy path, if not change to it
+
+            # Check if we're already in the deploy path, if not change to i
             if [ "$(pwd)" != "$DEPLOY_PATH" ]; then
               cd "$DEPLOY_PATH" || {
                 echo -e "${RED}Failed to cd to $DEPLOY_PATH${NC}"
                 exit 1
               }
             fi
-            
-            # Create certificate directory if it doesn't exist
+
+            # Create certificate directory if it doesn't exis
             if [ ! -d "$CERT_DIR" ]; then
               echo -e "${YELLOW}Creating certificate directory: $CERT_DIR${NC}"
               mkdir -p "$CERT_DIR"
             else
               echo -e "${GREEN}Certificate directory exists.${NC}"
             fi
-            
-            # Check if certificate files exist
+
+            # Check if certificate files exis
             if [ ! -f "$CERT_DIR/fullchain.pem" ] || [ ! -f "$CERT_DIR/privkey.pem" ]; then
               echo -e "${YELLOW}Certificates missing. Generating self-signed certificates...${NC}"
-              
+
               # Generate self-signed certificate
-              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                -keyout "$CERT_DIR/privkey.pem" \
-                -out "$CERT_DIR/fullchain.pem" \
-                -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048
+                -keyout "$CERT_DIR/privkey.pem"
+                -out "$CERT_DIR/fullchain.pem"
+                -subj "/CN=$DOMAIN/O=3x-ui/C=US"
                 -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                   echo -e "${RED}Failed to generate certificates. Trying alternate method...${NC}"
-                  
+
                   # Fallback method - simpler OpenSSL command
-                  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                    -keyout "$CERT_DIR/privkey.pem" \
-                    -out "$CERT_DIR/fullchain.pem" \
-                    -subj "/CN=$DOMAIN" \
+                  openssl req -x509 -nodes -days 365 -newkey rsa:2048
+                    -keyout "$CERT_DIR/privkey.pem"
+                    -out "$CERT_DIR/fullchain.pem"
+                    -subj "/CN=$DOMAIN"
                     -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                       echo -e "${RED}Both certificate generation methods failed.${NC}"
                       exit 1
                     }
                 }
-              
+
               echo -e "${GREEN}Self-signed certificates generated successfully.${NC}"
             else
               echo -e "${GREEN}Certificates already exist.${NC}"
-              
+
               # Check certificate expiration
               echo -e "${YELLOW}Checking certificate expiration...${NC}"
               END_DATE=$(openssl x509 -enddate -noout -in "$CERT_DIR/fullchain.pem" | cut -d= -f2)
               END_EPOCH=$(date -d "$END_DATE" +%s 2>/dev/null || date -j -f "%b %d %H:%M:%S %Y %Z" "$END_DATE" +%s 2>/dev/null)
               NOW_EPOCH=$(date +%s)
               DAYS_LEFT=$(( ($END_EPOCH - $NOW_EPOCH) / 86400 ))
-              
+
               if [ $? -eq 0 ] && [ $DAYS_LEFT -lt 30 ]; then
                 echo -e "${YELLOW}Certificate expires in $DAYS_LEFT days. Renewing...${NC}"
-                
+
                 # Backup existing certificates
                 cp "$CERT_DIR/fullchain.pem" "$CERT_DIR/fullchain.pem.bak"
                 cp "$CERT_DIR/privkey.pem" "$CERT_DIR/privkey.pem.bak"
-                
+
                 # Generate new self-signed certificate
-                openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                  -keyout "$CERT_DIR/privkey.pem" \
-                  -out "$CERT_DIR/fullchain.pem" \
-                  -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
+                openssl req -x509 -nodes -days 365 -newkey rsa:2048
+                  -keyout "$CERT_DIR/privkey.pem"
+                  -out "$CERT_DIR/fullchain.pem"
+                  -subj "/CN=$DOMAIN/O=3x-ui/C=US"
                   -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                     echo -e "${RED}Failed to renew certificates. Restoring backup...${NC}"
                     cp "$CERT_DIR/fullchain.pem.bak" "$CERT_DIR/fullchain.pem"
                     cp "$CERT_DIR/privkey.pem.bak" "$CERT_DIR/privkey.pem"
                   }
-                
+
                 echo -e "${GREEN}Certificate renewed successfully.${NC}"
               else
                 echo -e "${GREEN}Certificate is still valid.${NC}"
               fi
             fi
-            
+
             # Make a symbolic link to the service.foodshare.club directory in the right place
             echo -e "${YELLOW}Ensuring certificates are accessible to 3x-ui container...${NC}"
-            
-            # Create directory structure first
+
+            # Create directory structure firs
             mkdir -p "$DEPLOY_PATH/cert"
             mkdir -p "$DEPLOY_PATH/cert/$DOMAIN"
-            
+
             # Check if certificates exist in expected location
             if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
               echo -e "${GREEN}Certificates found in domain directory: $CERT_DIR${NC}"
-              
+
               # Copy certificates to the root level as well
               cp -f "$CERT_DIR/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
               cp -f "$CERT_DIR/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
               echo -e "${GREEN}Certificates copied to cert root directory${NC}"
             else
               echo -e "${RED}Certificates not found in domain directory.${NC}"
-              
-              # Check if they exist in the root
+
+              # Check if they exist in the roo
               if [ -f "$DEPLOY_PATH/cert/fullchain.pem" ] && [ -f "$DEPLOY_PATH/cert/privkey.pem" ]; then
                 echo -e "${YELLOW}Certificates found in root directory, copying to domain directory...${NC}"
                 cp -f "$DEPLOY_PATH/cert/fullchain.pem" "$CERT_DIR/fullchain.pem"
@@ -406,21 +420,21 @@ jobs:
                 echo -e "${GREEN}Certificates copied from root to domain directory${NC}"
               else
                 echo -e "${RED}No certificates found. Generating new ones...${NC}"
-                
+
                 # Generate self-signed certificates in both locations
-                openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                  -keyout "$CERT_DIR/privkey.pem" \
-                  -out "$CERT_DIR/fullchain.pem" \
-                  -subj "/CN=$DOMAIN" \
+                openssl req -x509 -nodes -days 365 -newkey rsa:2048
+                  -keyout "$CERT_DIR/privkey.pem"
+                  -out "$CERT_DIR/fullchain.pem"
+                  -subj "/CN=$DOMAIN"
                   -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053"
-                
+
                 # Also copy to root level
                 cp -f "$CERT_DIR/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
                 cp -f "$CERT_DIR/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
                 echo -e "${GREEN}New certificates generated and copied to both locations${NC}"
               fi
             fi
-            
+
             # Set proper permissions for both locations
             chmod 644 "$CERT_DIR/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
             chmod 600 "$CERT_DIR/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
@@ -449,7 +463,7 @@ jobs:
   deploy:
     name: 🚢 Deploy VPN Service
     needs: [setup]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-lates
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -461,32 +475,45 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      - name: Deploy from Git
+      - name: Deploy from Gi
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on error
-            
+
             # Define variables
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             REPO_URL="https://github.com/${{ github.repository }}.git"
             DEPLOY_BRANCH="main"
             REPO_ROOT=$(dirname "$DEPLOY_PATH")
             REPO_DIR=$(basename "$DEPLOY_PATH")
-            
-            # Colors for output
+
+            # Colors for outpu
             RED='\033[0;31m'
             GREEN='\033[0;32m'
             YELLOW='\033[1;33m'
             NC='\033[0m' # No Color
-            
+
             echo -e "${GREEN}==== Deploying 3x-ui VPN Service ====${NC}"
-            
-            # Check current state 
+
+            # Check current state
             echo -e "${YELLOW}Checking repository at $DEPLOY_PATH${NC}"
             if [ -d "$DEPLOY_PATH" ]; then
               cd "$DEPLOY_PATH"
-              
-              # Count files to see if repository has content
+
+              # Check for uncommitted changes first and forcibly remove them
+              if [ -d ".git" ]; then
+                echo -e "${YELLOW}Checking for uncommitted changes...${NC}"
+                if git status --porcelain | grep -q .; then
+                  echo -e "${YELLOW}Local changes detected. Forcibly discarding them...${NC}"
+                  git reset --hard HEAD
+                  git clean -fdx
+                  echo -e "${GREEN}Local changes discarded.${NC}"
+                else
+                  echo -e "${GREEN}No local changes detected.${NC}"
+                fi
+              fi
+
+              # Count files to see if repository has conten
               FILE_COUNT=$(find . -type f | wc -l)
               if [ "$FILE_COUNT" -lt 5 ]; then
                 echo -e "${RED}Repository has minimal files ($FILE_COUNT found). Recreating...${NC}"
@@ -507,59 +534,59 @@ jobs:
               mkdir -p "$DEPLOY_PATH"
               NEEDS_RECREATE=true
             fi
-            
-            # Backup important data first
+
+            # Backup important data firs
             echo -e "${YELLOW}Backing up important data${NC}"
             BACKUP_DIR="/tmp/3x-ui-backup-$(date +%s)"
             mkdir -p "$BACKUP_DIR"
-            
+
             if [ -d "$DEPLOY_PATH" ]; then
               cd "$DEPLOY_PATH"
-              
+
               # Backup essential files
               if [ -f ".env" ]; then
                 cp .env "$BACKUP_DIR/"
                 echo -e "${GREEN}Backed up .env file${NC}"
               fi
-              
+
               if [ -d "db" ]; then
                 mkdir -p "$BACKUP_DIR/db"
                 cp -r db/* "$BACKUP_DIR/db/" 2>/dev/null || true
                 echo -e "${GREEN}Backed up database files${NC}"
               fi
-              
+
               if [ -d "logs" ]; then
                 mkdir -p "$BACKUP_DIR/logs"
                 cp -r logs/* "$BACKUP_DIR/logs/" 2>/dev/null || true
                 echo -e "${GREEN}Backed up log files${NC}"
               fi
-              
+
               if [ -d "cert" ]; then
                 mkdir -p "$BACKUP_DIR/cert"
                 cp -r cert/* "$BACKUP_DIR/cert/" 2>/dev/null || true
                 echo -e "${GREEN}Backed up certificate files${NC}"
               fi
             fi
-            
+
             # Recreate repository if needed
             if [ "$NEEDS_RECREATE" = true ]; then
               # Go to parent directory
               cd "$REPO_ROOT"
-              
+
               # Rename old directory if it exists
               if [ -d "$REPO_DIR" ]; then
                 TIMESTAMP=$(date +%s)
                 mv "$REPO_DIR" "${REPO_DIR}_old_${TIMESTAMP}"
                 echo -e "${YELLOW}Renamed old directory to ${REPO_DIR}_old_${TIMESTAMP}${NC}"
               fi
-              
+
               # Clone fresh repository
               echo -e "${YELLOW}Cloning fresh repository from $REPO_URL${NC}"
               git clone -b "$DEPLOY_BRANCH" "$REPO_URL" "$REPO_DIR"
-              
+
               # Enter repository
               cd "$REPO_DIR"
-              
+
               # Verify clone was successful
               if [ ! -f "docker-compose.yml" ]; then
                 echo -e "${RED}ERROR: docker-compose.yml not found after cloning. Check repository.${NC}"
@@ -571,52 +598,107 @@ jobs:
             else
               # If we don't need to recreate, just pull latest changes
               cd "$DEPLOY_PATH"
-              echo -e "${YELLOW}Pulling latest changes...${NC}"
-              git pull origin "$DEPLOY_BRANCH"
+              echo -e "${YELLOW}Discarding any local changes and pulling latest changes...${NC}"
+              # Force reset to discard local changes before pulling
+              git reset --hard HEAD
+              git clean -fdx
+              # Pull with force flag to override any local changes
+              git fetch origin "$DEPLOY_BRANCH"
+
+              # Try to reset to the origin branch, but if it fails, try a more aggressive approach
+              if ! git reset --hard origin/"$DEPLOY_BRANCH"; then
+                echo -e "${RED}Failed to reset to origin/$DEPLOY_BRANCH. Trying more aggressive approach...${NC}"
+
+                # Backup important data
+                TIMESTAMP=$(date +%s)
+                BACKUP_DIR="/tmp/3x-ui-backup-$TIMESTAMP"
+                mkdir -p "$BACKUP_DIR"
+
+                # Backup essential data
+                if [ -d "db" ]; then
+                  cp -r db "$BACKUP_DIR/"
+                fi
+                if [ -d "cert" ]; then
+                  cp -r cert "$BACKUP_DIR/"
+                fi
+                if [ -d "logs" ]; then
+                  cp -r logs "$BACKUP_DIR/"
+                fi
+                if [ -f ".env" ]; then
+                  cp .env "$BACKUP_DIR/"
+                fi
+
+                # Remove the git repository
+                rm -rf .gi
+
+                # Initialize a new repository
+                git ini
+                git remote add origin "$REPO_URL"
+                git fetch origin
+                git checkout -b "$DEPLOY_BRANCH" --track "origin/$DEPLOY_BRANCH"
+
+                # Restore the backed up data
+                if [ -d "$BACKUP_DIR/db" ]; then
+                  cp -r "$BACKUP_DIR/db" .
+                fi
+                if [ -d "$BACKUP_DIR/cert" ]; then
+                  cp -r "$BACKUP_DIR/cert" .
+                fi
+                if [ -d "$BACKUP_DIR/logs" ]; then
+                  cp -r "$BACKUP_DIR/logs" .
+                fi
+                if [ -f "$BACKUP_DIR/.env" ]; then
+                  cp "$BACKUP_DIR/.env" .
+                fi
+
+                echo -e "${GREEN}Successfully recreated repository and restored data.${NC}"
+              else
+                echo -e "${GREEN}Successfully reset to latest changes.${NC}"
+              fi
             fi
-            
+
             # Make sure we're in the repository
             cd "$DEPLOY_PATH"
-            
+
             # Restore data from backup
             if [ -d "$BACKUP_DIR" ]; then
               echo -e "${YELLOW}Restoring from backup...${NC}"
-              
+
               # Restore .env
               if [ -f "$BACKUP_DIR/.env" ]; then
                 cp "$BACKUP_DIR/.env" .env
                 echo -e "${GREEN}Restored .env file${NC}"
               fi
-              
+
               # Restore database
               if [ -d "$BACKUP_DIR/db" ] && [ "$(ls -A "$BACKUP_DIR/db" 2>/dev/null)" ]; then
                 mkdir -p db
                 cp -r "$BACKUP_DIR/db/"* db/ 2>/dev/null || true
                 echo -e "${GREEN}Restored database files${NC}"
               fi
-              
+
               # Restore logs
               if [ -d "$BACKUP_DIR/logs" ] && [ "$(ls -A "$BACKUP_DIR/logs" 2>/dev/null)" ]; then
                 mkdir -p logs
                 cp -r "$BACKUP_DIR/logs/"* logs/ 2>/dev/null || true
                 echo -e "${GREEN}Restored log files${NC}"
               fi
-              
+
               # Restore certificates
               if [ -d "$BACKUP_DIR/cert" ] && [ "$(ls -A "$BACKUP_DIR/cert" 2>/dev/null)" ]; then
-                mkdir -p cert
+                mkdir -p cer
                 cp -r "$BACKUP_DIR/cert/"* cert/ 2>/dev/null || true
                 echo -e "${GREEN}Restored certificate files${NC}"
               fi
             fi
-            
+
             # Generate .env file from GitHub secrets
             echo "📄 Generating .env file from GitHub secrets"
-            
+
             # Ensure scripts directory exists and is executable
             mkdir -p scripts
-            
-            # Create environment variables to pass to script
+
+            # Create environment variables to pass to scrip
             export PANEL_PATH="${{ secrets.PANEL_PATH }}"
             export HTTPS_PORT="${{ secrets.HTTPS_PORT }}"
             export VPN_DOMAIN="${{ secrets.VPN_DOMAIN }}"
@@ -625,7 +707,7 @@ jobs:
             export XUI_USERNAME="${{ secrets.XUI_USERNAME }}"
             export XUI_PASSWORD="${{ secrets.XUI_PASSWORD }}"
             export JWT_SECRET="${{ secrets.JWT_SECRET }}"
-            
+
             # Run the script to generate .env file
             if [ -f "scripts/generate_env.sh" ]; then
               chmod +x scripts/generate_env.sh
@@ -633,7 +715,7 @@ jobs:
               echo "✅ .env file generated from GitHub secrets"
             else
               echo "⚠️ generate_env.sh script not found, creating basic .env file"
-              
+
               # Create .env file line by line instead of using heredoc (avoiding YAML parsing issues)
               echo "# 3x-ui VPN Service Configuration" > .env
               echo "# Generated by CI/CD on $(date)" >> .env
@@ -662,11 +744,11 @@ jobs:
               chmod 600 .env
               echo "✅ Basic .env file created with GitHub secrets"
             fi
-            
-            # Ensure required directories exist
+
+            # Ensure required directories exis
             echo "📁 Ensuring required directories exist"
             mkdir -p db cert logs cert/service.foodshare.club docs
-            
+
             # Ensure db/x-ui.db exists and is a file
             if [ -d "db/x-ui.db" ]; then
               echo "⚠️ db/x-ui.db is a directory, fixing..."
@@ -677,28 +759,28 @@ jobs:
               echo "📄 Creating db/x-ui.db placeholder"
               touch db/x-ui.db
             fi
-            
+
             # Set up Docker networks
             echo "🌐 Setting up Docker networks"
             docker network create web 2>/dev/null || true
             docker network create no-zero-trust-cloudflared 2>/dev/null || true
-            
+
             # Deploy containers
             echo "🚀 Deploying containers"
             docker-compose pull
             docker-compose down
             docker-compose up -d
-            
+
             echo "✅ Deployment completed!"
             echo "🔎 Container status:"
             docker-compose ps
-            
+
             # Check if Caddy config exists and display information
             if [ -f "docs/caddy-config.md" ]; then
               echo "⚠️ IMPORTANT: Update your Caddy configuration with:"
               echo "📁 $(pwd)/docs/caddy-config.md"
             fi
-            
+
             # Verify deployed version
             echo "📋 Deployed version information:"
             git log -n 1 --pretty=format:"Commit: %h%nAuthor: %an%nDate: %ad%nMessage: %s"
@@ -707,77 +789,77 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex
-            
+
             # Define variables
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            
+
             cd "$DEPLOY_PATH"
-            
+
             echo "🔄 Restarting container to apply certificate changes..."
-            
+
             # Ensure certificate directory exists in both locations
             mkdir -p "$DEPLOY_PATH/cert/service.foodshare.club"
-            
+
             # Make sure the certificate exists in all required locations
             if [ -f "$DEPLOY_PATH/cert/service.foodshare.club/fullchain.pem" ]; then
               echo "✅ Certificates exist in domain directory"
-              
+
               # Also create certificates in the root cert directory for fallback
               cp "$DEPLOY_PATH/cert/service.foodshare.club/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
               cp "$DEPLOY_PATH/cert/service.foodshare.club/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
-              
+
               echo "✅ Copied certificates to root cert directory"
             else
               echo "❌ Certificates not found in domain directory!"
             fi
-            
+
             # Set proper permissions
             chmod 644 "$DEPLOY_PATH/cert/service.foodshare.club/fullchain.pem" "$DEPLOY_PATH/cert/fullchain.pem"
             chmod 600 "$DEPLOY_PATH/cert/service.foodshare.club/privkey.pem" "$DEPLOY_PATH/cert/privkey.pem"
-            
-            # Execute our deployment helper script
+
+            # Execute our deployment helper scrip
             chmod +x scripts/deploy.sh
             ./scripts/deploy.sh
-            
+
             # Configure firewall if needed
             if ! docker-compose ps | grep -q "3x-ui.*Up"; then
               echo "⚠️ Container may not be running correctly, checking firewall..."
               sudo chmod +x scripts/configure_firewall.sh
               sudo ./scripts/configure_firewall.sh
-              
+
               # Try restarting again
               ./scripts/deploy.sh
             fi
           EOL
-      - name: Verify deployment
+      - name: Verify deploymen
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on error
-            
+
             # Define deploy path
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            
+
             echo "Verifying deployment in $DEPLOY_PATH"
             cd "$DEPLOY_PATH" || {
               echo "ERROR: Unable to cd to $DEPLOY_PATH"
               exit 1
             }
-            
+
             echo "Directory structure:"
-            find . -type d -maxdepth 2 | sort
-            
+            find . -type d -maxdepth 2 | sor
+
             echo "Critical files:"
             ls -la docker-compose.yml .env* db/ 2>/dev/null || echo "Some files may be missing"
-            
+
             echo "Container status:"
             docker-compose ps
-            
+
             echo "Running containers:"
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-            
+
             echo "Container logs (last 10 lines):"
             docker-compose logs --tail=10
-            
+
             echo "Checking if 3x-ui container is running:"
             if docker ps | grep -q '3x-ui'; then
               echo "✅ 3x-ui container is running"
@@ -789,14 +871,14 @@ jobs:
               docker-compose logs 3x-ui
               exit 1
             fi
-            
+
             echo "✅ Deployment verification completed successfully"
           EOL
 
   verify:
-    name: ✅ Verify Deployment
+    name: ✅ Verify Deploymen
     needs: deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-lates
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -806,35 +888,35 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      - name: Verify deployment
+      - name: Verify deploymen
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on error
-            
+
             # Define deploy path
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            
+
             echo "Verifying deployment in $DEPLOY_PATH"
             cd "$DEPLOY_PATH" || {
               echo "ERROR: Unable to cd to $DEPLOY_PATH"
               exit 1
             }
-            
+
             echo "Directory structure:"
-            find . -type d -maxdepth 2 | sort
-            
+            find . -type d -maxdepth 2 | sor
+
             echo "Critical files:"
             ls -la docker-compose.yml .env* db/ 2>/dev/null || echo "Some files may be missing"
-            
+
             echo "Container status:"
             docker-compose ps
-            
+
             echo "Running containers:"
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-            
+
             echo "Container logs (last 10 lines):"
             docker-compose logs --tail=10
-            
+
             echo "Checking if 3x-ui container is running:"
             if docker ps | grep -q '3x-ui'; then
               echo "✅ 3x-ui container is running"
@@ -846,7 +928,7 @@ jobs:
               docker-compose logs 3x-ui
               exit 1
             fi
-            
+
             echo "✅ Deployment verification completed successfully"
           EOL
 
@@ -854,7 +936,7 @@ jobs:
     name: 📊 Collect Logs
     needs: [deploy, verify]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-lates
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -912,7 +994,7 @@ jobs:
           # Check if we got any logs, if not create a dummy file
           if [ -z "$(ls -A downloaded_logs)" ]; then
             echo "No logs were downloaded, creating a dummy log file"
-            echo "No logs were available on the server at the time of collection." > downloaded_logs/empty_logs.txt
+            echo "No logs were available on the server at the time of collection." > downloaded_logs/empty_logs.tx
           fi
           # Copy all downloaded logs to the workflow_logs directory
           cp -r downloaded_logs/* workflow_logs/ || true
@@ -930,23 +1012,23 @@ jobs:
     name: 🎉 Deployment Summary
     needs: [debug_info, validate, setup, deploy, verify, logs, cert_fix]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-lates
     steps:
       - name: Generate Summary
         run: |
           echo "# 3x-ui VPN Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           echo "✅ **Debug Info**: See debug_info job" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Configuration Validation**: See validate job" >> $GITHUB_STEP_SUMMARY
           echo "✅ **SSH Setup**: See setup job" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Deployment**: See deploy job" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Verification**: See verify job" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Logs**: See logs job" >> $GITHUB_STEP_SUMMARY
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Access Information" >> $GITHUB_STEP_SUMMARY
           echo "🔗 **Admin Panel**: https://${{ secrets.VPN_DOMAIN }}/BXv8SI7gBe/" >> $GITHUB_STEP_SUMMARY
-      - name: Output Result
+      - name: Output Resul
         run: |
           echo "✅ 3x-ui VPN deployment workflow completed."
