@@ -9,7 +9,7 @@ XUI_PASSWORD=${XUI_PASSWORD:-admin}
 PANEL_PATH=${PANEL_PATH:-BXv8SI7gBe}
 VPN_DOMAIN=${VPN_DOMAIN:-service.foodshare.club}
 
-# Force HTTP for admin panel access
+# Force HTTP for admin panel access through the proxy
 ADMIN_URL="http://${VPN_DOMAIN}:2053/${PANEL_PATH}/"
 
 echo "Opening admin panel at: $ADMIN_URL"
@@ -30,4 +30,12 @@ elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
 else
     echo "Unsupported OS. Please manually open this URL in your browser:"
     echo "$ADMIN_URL"
-fi 
+fi
+
+# Add proxy troubleshooting info
+echo ""
+echo "🔍 Troubleshooting Tips:"
+echo "1. The admin panel is now served through an nginx proxy"
+echo "2. All assets should load properly over HTTP"
+echo "3. If you still have issues, try clearing your browser cache"
+echo "4. Check our container logs with: docker-compose logs" 
