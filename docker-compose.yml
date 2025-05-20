@@ -27,7 +27,6 @@ services:
       - web
       - vpn-network
       - audiobookshelf_bridge
-      # Add other networks as needed for additional services
     deploy:
       <<: *default-deploy
       update_config:

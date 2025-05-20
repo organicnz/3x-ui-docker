@@ -1,0 +1,14 @@
+{
+	"status": "valid",
+	"contact": [
+		"mailto:admin@example.com"
+	],
+	"termsOfServiceAgreed": true,
+	"externalAccountBinding": {
+		"protected": "eyJhbGciOiJIUzI1NiIsImtpZCI6IkVmQnRZOTdmVTB4NUJxUnR2RzdwRlEiLCJ1cmwiOiJodHRwczovL2FjbWUuemVyb3NzbC5jb20vdjIvRFY5MC9uZXdBY2NvdW50In0",
+		"payload": "eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InRnUlZSaVhXeWNVdS1kbFpJRGduSXIzUkh5Ui1uck5aWjdNLS1BdFBnLXMiLCJ5IjoiYklxM0Qwd1ZwWFRUb3plRUdGVXUzS29jdVJBSHRaLVBHV196VUNVd3JHQSJ9",
+		"signature": "684l5O6deew3FseJtLinR5rrkSKcxwuRZMGKTREdF1M"
+	},
+	"orders": "https://acme.zerossl.com/v2/DV90/account/XELKQSPrFHLjrMIrXHbG8w/orders",
+	"location": "https://acme.zerossl.com/v2/DV90/account/XELKQSPrFHLjrMIrXHbG8w"
+}
