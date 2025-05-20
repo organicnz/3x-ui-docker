@@ -9,7 +9,7 @@ XUI_PASSWORD=${XUI_PASSWORD:-admin}
 PANEL_PATH=${PANEL_PATH:-BXv8SI7gBe}
 VPN_DOMAIN=${VPN_DOMAIN:-service.foodshare.club}
 
-# Force HTTP for admin panel access through the proxy
+# Force HTTP for admin panel access
 ADMIN_URL="http://${VPN_DOMAIN}:2053/${PANEL_PATH}/"
 
 echo "Opening admin panel at: $ADMIN_URL"
@@ -32,10 +32,10 @@ else
     echo "$ADMIN_URL"
 fi
 
-# Add proxy troubleshooting info
+# Add troubleshooting tips
 echo ""
 echo "🔍 Troubleshooting Tips:"
-echo "1. The admin panel is now served through an nginx proxy"
-echo "2. All assets should load properly over HTTP"
-echo "3. If you still have issues, try clearing your browser cache"
-echo "4. Check our container logs with: docker-compose logs" 
+echo "1. Make sure you're accessing the panel via HTTP (not HTTPS)"
+echo "2. If you see certificate errors, try using a private/incognito window"
+echo "3. Clear your browser cache if you still encounter issues"
+echo "4. Check container logs with: docker-compose logs"

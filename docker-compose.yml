@@ -4,13 +4,12 @@ services:
     image: ghcr.io/mhsanaei/3x-ui:latest
     container_name: 3x-ui
     restart: unless-stopped
-    # Internal service only - not directly exposed
-    expose:
-      - 2053
     ports:
-      # Essential XRay protocol ports - HTTPS for VPN service
-      - 443:443    # HTTPS/TLS for VPN traffic
-      - 80:80      # HTTP for VPN traffic
+      # Admin panel port
+      - 2053:2053  # Admin panel
+      # Essential XRay protocol ports
+      - 443:443    # HTTPS/TLS
+      - 80:80      # HTTP
       # Additional VPN protocol ports
       - 54321:54321 # Fallback/additional port
     volumes:
@@ -23,22 +22,26 @@ services:
     environment:
       - XRAY_VMESS_AEAD_FORCED=${XRAY_VMESS_AEAD_FORCED:-false}
       - PANEL_PATH=${PANEL_PATH:-BXv8SI7gBe}
-      # Configure base settings for internal service
-      - BASE_URL=http://localhost
+      # Force HTTP strictly for the admin panel
+      - BASE_URL=${VPN_DOMAIN:-service.foodshare.club}
       - ASSETS_PATH=/BXv8SI7gBe/assets
-      # Explicitly disable HTTPS for admin UI
+      # Key environment variables for HTTP handling
       - XUI_USE_HTTPS=false
-      - FORCE_HTTPS=false
+            - FORCE_HTTPS=false
       - URL_PROTOCOL=http
       - DISABLE_TLS=true
       - HTTP_PORT=2053
       - HTTPS_PORT=443
       - TLS_PORT=443
-      # Force using HTTP for all internal asset references
       - SKIP_PORT_IN_URL=true
       - ASSETS_OVERRIDE=true
       - NODE_ENV=production
+      # Performance and security settings
+      - COMPRESSION=true
       - ENABLE_SHARED_STORAGE=true
+      # Allow mixed content and cross-origin resources
+      - ENABLE_MIXED_CONTENT=true
+      - CORS_ALLOW_ALL=true
       # Custom credentials
       - XUI_USERNAME=${XUI_USERNAME:-admin}
       - XUI_PASSWORD=${XUI_PASSWORD:-admin}
@@ -47,21 +50,6 @@ services:
       # Domain information
       - VPN_DOMAIN=${VPN_DOMAIN:-service.foodshare.club}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-    networks:
-      - vpn-network
-
-  # Add nginx proxy to handle admin panel access
-  nginx:
-    image: nginx:alpine
-    container_name: 3x-ui-proxy
-    restart: unless-stopped
-    ports:
-      - 2053:80  # Expose admin panel on port 2053
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - 3x-ui
     networks:
       - vpn-network
 
