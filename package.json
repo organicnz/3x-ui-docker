@@ -15,7 +15,12 @@
     "backup": "bash ./scripts/backup.sh",
     "cert:check": "bash ./scripts/renew_certificates.sh",
     "security:check": "bash ./scripts/security_check.sh",
-    "security:fix": "bash ./scripts/security_check.sh && docker-compose restart 3x-ui"
+    "security:fix": "bash ./scripts/security_check.sh && docker-compose restart 3x-ui",
+    "docker:check": "bash ./scripts/check_docker_config.sh",
+    "jwt:update": "bash ./scripts/update_jwt_secret.sh",
+    "jwt:update:auto": "bash ./scripts/update_jwt_secret.sh -y",
+    "jwt:update:env": "bash ./scripts/update_jwt_secret.sh --env-only",
+    "jwt:update:compose": "bash ./scripts/update_jwt_secret.sh --compose-only"
   },
   "repository": {
     "type": "git",

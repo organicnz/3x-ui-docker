@@ -36,6 +36,40 @@ Features:
 - Proper permission enforcement
 - Automatic service restart when certificates change
 
+### Docker Configuration Checker (`check_docker_config.sh`)
+
+Validates the docker-compose.yml configuration for 3x-ui VPN service.
+
+```bash
+npm run docker:check
+```
+
+Features:
+- Validates docker-compose.yml syntax
+- Checks for required services and port mappings
+- Validates admin credentials configuration
+- Checks for JWT_SECRET configuration
+- Identifies potential security issues
+- Ensures proper reverse proxy setup
+
+### JWT Secret Manager (`update_jwt_secret.sh`)
+
+Generates and updates the JWT secret for secure authentication.
+
+```bash
+npm run jwt:update            # Interactive mode
+npm run jwt:update:auto       # Automatic mode - updates all config files
+npm run jwt:update:env        # Only update .env file
+npm run jwt:update:compose    # Only update docker-compose.yml file
+```
+
+Features:
+- Generates cryptographically secure random JWT secrets
+- Updates configuration in .env file and/or docker-compose.yml
+- Creates backups before making changes
+- Supports both interactive and non-interactive modes
+- Validates changes after updating
+
 ## Backup Scripts
 
 ### Automated Backup (`backup.sh`)
