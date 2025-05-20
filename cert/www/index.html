@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3x-ui VPN Service Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #3366cc;
+        }
+    </style>
+</head>
+<body>
+    <h1>3x-ui VPN Service is working!</h1>
+    <p>If you can see this page, the server is running correctly.</p>
+    <p>Time: <span id="time"></span></p>
+    
+    <script>
+        document.getElementById('time').textContent = new Date().toLocaleString();
+    </script>
+</body>
+</html> 
