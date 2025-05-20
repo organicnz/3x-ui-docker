@@ -114,6 +114,21 @@ Supported types:
 - `Test`: Testing improvements
 - `Chore`: Maintenance tasks
 
+### GitHub Deploy Key Setup (`setup_github_deploy_key.sh`)
+
+Generates and configures a properly formatted GitHub deploy key.
+
+```bash
+npm run setup:deploy-key
+```
+
+Features:
+- Creates SSH keys with GitHub URL pattern in the comment
+- Provides step-by-step instructions for adding keys to GitHub
+- Automatically generates keys in the correct format for GitHub Actions
+- Helps solve "key comment doesn't match GitHub URL pattern" warnings
+- Recommends secure key management practices
+
 ## Utility Functions
 
 ### Utils Library (`utils.sh`)
