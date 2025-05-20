@@ -76,7 +76,7 @@ services:
       - XUI_USE_HTTPS=false
       - FORCE_HTTPS=false
       - URL_PROTOCOL=http
-      - DISABLE_TLS=false
+      - DISABLE_TLS=true
       - HTTP_PORT=2053
       - HTTPS_PORT=443
       - TLS_PORT=443
