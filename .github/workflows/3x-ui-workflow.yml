@@ -1,7 +1,7 @@
 permissions:
   contents: read
 
-name: 3x-ui VPN Service Managemen
+name: 3x-ui VPN Service Management
 
 on:
   workflow_dispatch:
@@ -16,10 +16,15 @@ on:
   schedule:
     - cron: 0 2 * * *  # Run daily at 2 AM UTC for backups
 
+# Add concurrency to cancel queued workflows
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   debug_info:
     name: 🐛 Debug Workflow Info
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     steps:
       - name: Display Trigger Info
         env:
@@ -40,7 +45,7 @@ jobs:
 
   cert_fix:
     name: 🚑 Emergency Certificate Fix
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     if: false  # Disabled by default, use separate workflow for cert fixes
     steps:
       - name: Set up SSH
@@ -69,10 +74,10 @@ jobs:
             mkdir -p "$CERT_DIR"
 
             echo "🔑 Creating self-signed certificates..."
-            openssl req -x509 -nodes -days 365 -newkey rsa:2048
-              -keyout "$CERT_DIR/privkey.pem"
-              -out "$CERT_DIR/fullchain.pem"
-              -subj "/CN=$DOMAIN/O=3x-ui/C=US"
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -keyout "$CERT_DIR/privkey.pem" \
+              -out "$CERT_DIR/fullchain.pem" \
+              -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
               -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053"
 
             echo "🔒 Setting permissions..."
@@ -90,7 +95,7 @@ jobs:
             openssl x509 -noout -text -in "$CERT_DIR/fullchain.pem" | grep -E "Subject:|Issuer:|Not Before:|Not After :|DNS:"
 
             echo "📋 Container logs (last 10 lines):"
-            sleep 5  # Give the container time to star
+            sleep 5  # Give the container time to start
             docker-compose logs --tail=10 3x-ui
           EOL
       - name: Add to workflow summary
@@ -104,7 +109,7 @@ jobs:
 
   validate:
     name: 🔍 Validate Configuration
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     needs: debug_info
     steps:
       - name: Checkout code
@@ -122,7 +127,7 @@ jobs:
   setup:
     name: 🚀 Setup Server
     needs: validate
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -185,7 +190,7 @@ jobs:
             # Check if .git directory exists
             if [ ! -d ".git" ]; then
               echo -e "${YELLOW}No Git repository found. Initializing...${NC}"
-              git ini
+              git init
               git remote add origin "$REPO_URL"
             else
               echo -e "${GREEN}Git repository exists. Checking configuration...${NC}"
@@ -339,20 +344,20 @@ jobs:
             # Check if certificate files exis
             if [ ! -f "$CERT_DIR/fullchain.pem" ] || [ ! -f "$CERT_DIR/privkey.pem" ]; then
               echo -e "${YELLOW}Certificates missing. Generating self-signed certificates...${NC}"
-
+              
               # Generate self-signed certificate
-              openssl req -x509 -nodes -days 365 -newkey rsa:2048
-                -keyout "$CERT_DIR/privkey.pem"
-                -out "$CERT_DIR/fullchain.pem"
-                -subj "/CN=$DOMAIN/O=3x-ui/C=US"
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout "$CERT_DIR/privkey.pem" \
+                -out "$CERT_DIR/fullchain.pem" \
+                -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
                 -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                   echo -e "${RED}Failed to generate certificates. Trying alternate method...${NC}"
-
+                  
                   # Fallback method - simpler OpenSSL command
-                  openssl req -x509 -nodes -days 365 -newkey rsa:2048
-                    -keyout "$CERT_DIR/privkey.pem"
-                    -out "$CERT_DIR/fullchain.pem"
-                    -subj "/CN=$DOMAIN"
+                  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                    -keyout "$CERT_DIR/privkey.pem" \
+                    -out "$CERT_DIR/fullchain.pem" \
+                    -subj "/CN=$DOMAIN" \
                     -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                       echo -e "${RED}Both certificate generation methods failed.${NC}"
                       exit 1
@@ -378,10 +383,10 @@ jobs:
                 cp "$CERT_DIR/privkey.pem" "$CERT_DIR/privkey.pem.bak"
 
                 # Generate new self-signed certificate
-                openssl req -x509 -nodes -days 365 -newkey rsa:2048
-                  -keyout "$CERT_DIR/privkey.pem"
-                  -out "$CERT_DIR/fullchain.pem"
-                  -subj "/CN=$DOMAIN/O=3x-ui/C=US"
+                openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                  -keyout "$CERT_DIR/privkey.pem" \
+                  -out "$CERT_DIR/fullchain.pem" \
+                  -subj "/CN=$DOMAIN/O=3x-ui/C=US" \
                   -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053" || {
                     echo -e "${RED}Failed to renew certificates. Restoring backup...${NC}"
                     cp "$CERT_DIR/fullchain.pem.bak" "$CERT_DIR/fullchain.pem"
@@ -422,10 +427,10 @@ jobs:
                 echo -e "${RED}No certificates found. Generating new ones...${NC}"
 
                 # Generate self-signed certificates in both locations
-                openssl req -x509 -nodes -days 365 -newkey rsa:2048
-                  -keyout "$CERT_DIR/privkey.pem"
-                  -out "$CERT_DIR/fullchain.pem"
-                  -subj "/CN=$DOMAIN"
+                openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                  -keyout "$CERT_DIR/privkey.pem" \
+                  -out "$CERT_DIR/fullchain.pem" \
+                  -subj "/CN=$DOMAIN" \
                   -addext "subjectAltName=DNS:$DOMAIN,DNS:$DOMAIN:2053"
 
                 # Also copy to root level
@@ -463,7 +468,7 @@ jobs:
   deploy:
     name: 🚢 Deploy VPN Service
     needs: [setup]
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -632,7 +637,7 @@ jobs:
                 rm -rf .gi
 
                 # Initialize a new repository
-                git ini
+                git init
                 git remote add origin "$REPO_URL"
                 git fetch origin
                 git checkout -b "$DEPLOY_BRANCH" --track "origin/$DEPLOY_BRANCH"
@@ -762,8 +767,10 @@ jobs:
 
             # Set up Docker networks
             echo "🌐 Setting up Docker networks"
-            docker network create web 2>/dev/null || true
-            docker network create no-zero-trust-cloudflared 2>/dev/null || true
+
+            # Use our new networks and volumes setup script
+            chmod +x scripts/create_networks.sh
+            ./scripts/create_networks.sh
 
             # Deploy containers
             echo "🚀 Deploying containers"
@@ -878,7 +885,7 @@ jobs:
   verify:
     name: ✅ Verify Deploymen
     needs: deploy
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -936,7 +943,7 @@ jobs:
     name: 📊 Collect Logs
     needs: [deploy, verify]
     if: always()
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     steps:
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
@@ -1012,7 +1019,7 @@ jobs:
     name: 🎉 Deployment Summary
     needs: [debug_info, validate, setup, deploy, verify, logs, cert_fix]
     if: always()
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     steps:
       - name: Generate Summary
         run: |

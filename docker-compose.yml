@@ -1,4 +1,6 @@
 # 3x-ui VPN Service with Caddy Reverse Proxy
+version: '3.8'
+
 x-deploy: &default-deploy
   restart_policy:
     condition: unless-stopped
@@ -21,7 +23,6 @@ services:
       - ./caddy_config:/config
       - ./caddy_config/Caddyfile:/etc/caddy/Caddyfile
       - ./tls:/etc/caddy/tls        
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - no-zero-trust-cloudflared
       - zero-trust-cloudflared

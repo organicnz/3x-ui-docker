@@ -57,16 +57,20 @@ else
   print_status "yellow" "Certificate fix script not found. Skipping certificate setup."
 fi
 
-# Pull latest images
-print_status "green" "Pulling latest Docker images..."
+# Setup networks and volumes first
+print_status "green" "Setting up networks and volumes..."
+./scripts/create_networks.sh
+
+# Stop containers if they're running
+print_status "green" "Stopping any running containers..."
+docker-compose down || true
+
+# Pull the latest images
+print_status "green" "Pulling latest images..."
 docker-compose pull
 
-# Stop the existing containers
-print_status "green" "Stopping existing containers..."
-docker-compose down
-
 # Start the containers
-print_status "green" "Starting containers with new configuration..."
+print_status "green" "Starting containers..."
 docker-compose up -d
 
 # Wait for container to start

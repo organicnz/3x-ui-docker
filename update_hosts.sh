@@ -48,7 +48,7 @@ else
 fi
 
 # Check for port 2053 exposure (internal)
-if grep -q "- 2053" docker-compose.yml; then
+if grep -q -- "- 2053" docker-compose.yml; then
   echo "✅ Admin panel port 2053 is exposed internally"
 else
   echo "❌ Admin panel port 2053 not exposed"
@@ -56,7 +56,7 @@ else
 fi
 
 # Check for admin port 54321
-if grep -q "- 54321:54321" docker-compose.yml; then
+if grep -q -- "54321:54321" docker-compose.yml; then
   echo "✅ Admin port 54321 is correctly mapped"
 else
   echo "❌ Admin port 54321 not properly mapped"
