@@ -1,6 +1,6 @@
 {
     # Global Caddy configuration
-    email admin@example.com
+    email tamerlanium@gmail.com
     
     # Default log configuration
     log {
