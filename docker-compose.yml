@@ -5,7 +5,7 @@ services:
     container_name: 3x-ui
     restart: unless-stopped
     ports:
-      # Admin panel port
+      # Admin panel port - expose directly
       - 2053:2053  # Admin panel
       # Essential XRay protocol ports
       - 443:443    # HTTPS/TLS
@@ -22,16 +22,14 @@ services:
     environment:
       - XRAY_VMESS_AEAD_FORCED=${XRAY_VMESS_AEAD_FORCED:-false}
       - PANEL_PATH=${PANEL_PATH:-BXv8SI7gBe}
-      # Set custom base URL for assets with HTTPS
-      - BASE_URL=https://${VPN_DOMAIN:-service.foodshare.club}
-      # Force using assets from BASE_URL without port
+      # Disable port in asset URLs to fix certificate issues
+      - ASSETS_PATH=/BXv8SI7gBe/assets
+      - SKIP_PORT_IN_URL=true
+      # Set correct base URL without port
+      - BASE_URL=${VPN_DOMAIN:-service.foodshare.club}
+      # Don't use HTTPS for internal asset URLs
+      - FORCE_HTTPS=false
       - ASSETS_OVERRIDE=true
-      # TLS configuration - Enable HTTPS
-      - XUI_ENFORCE_HTTPS=true
-      - FORCE_HTTPS=true
-      - DISABLE_TLS=false
-      # Set proper URL protocol
-      - URL_PROTOCOL=https
       # Custom credentials
       - XUI_USERNAME=${XUI_USERNAME:-admin}
       - XUI_PASSWORD=${XUI_PASSWORD:-admin}
