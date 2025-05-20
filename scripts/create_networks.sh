@@ -31,6 +31,32 @@ docker volume create vault-data 2>/dev/null || echo -e "${GREEN}Volume 'vault-da
 # Create required directories
 echo -e "${YELLOW}Creating required directories...${NC}"
 mkdir -p db cert logs caddy_data caddy_config tls workflow_logs
-chmod -R 755 db cert logs caddy_data caddy_config tls
+
+# Fix permissions recursively with error handling
+echo -e "${YELLOW}Setting proper permissions...${NC}"
+
+# Fix root directory permissions first
+chmod 755 db cert logs caddy_data caddy_config tls workflow_logs || echo -e "${YELLOW}Warning: Could not set permissions on some directories${NC}"
+
+# Handle caddy_data specifically - this often has permission issues
+if [ -d "caddy_data" ]; then
+  echo -e "${YELLOW}Fixing caddy_data permissions...${NC}"
+  
+  # First try with current user
+  find caddy_data -type d -exec chmod 755 {} \; 2>/dev/null || true
+  find caddy_data -type f -exec chmod 644 {} \; 2>/dev/null || true
+  
+  # Try with sudo if available
+  if command -v sudo &> /dev/null; then
+    echo -e "${YELLOW}Using sudo to fix caddy_data permissions...${NC}"
+    sudo find caddy_data -type d -exec chmod 755 {} \; 2>/dev/null || true
+    sudo find caddy_data -type f -exec chmod 644 {} \; 2>/dev/null || true
+    sudo chown -R $(whoami):$(whoami) caddy_data 2>/dev/null || true
+  fi
+fi
+
+# Ensure logs folder has correct permissions
+echo -e "${YELLOW}Setting logs directory permissions...${NC}"
+chmod -R 777 logs 2>/dev/null || echo -e "${YELLOW}Warning: Could not set permissions on logs directory${NC}"
 
 echo -e "${GREEN}====== Docker Networks and Volumes setup complete ======${NC}" 

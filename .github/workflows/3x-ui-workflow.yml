@@ -144,6 +144,49 @@ jobs:
           ssh -o BatchMode=yes -o ConnectTimeout=10 ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             echo '✅ SSH connection successful'
           EOL
+      - name: Fix directory permissions
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
+            set -ex
+            
+            # Define variables
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            
+            # Go to directory if it exists
+            if [ -d "$DEPLOY_PATH" ]; then
+              cd "$DEPLOY_PATH"
+              
+              # Fix caddy_data permissions with sudo if available
+              if [ -d "caddy_data" ]; then
+                echo "🔧 Fixing caddy_data permissions..."
+                sudo find caddy_data -type d -exec chmod 755 {} \; 2>/dev/null || true
+                sudo find caddy_data -type f -exec chmod 644 {} \; 2>/dev/null || true
+                sudo chown -R $USER:$USER caddy_data 2>/dev/null || true
+              fi
+              
+              # Fix logs directory
+              if [ -d "logs" ]; then
+                echo "🔧 Fixing logs directory permissions..."
+                sudo chown -R $USER:$USER logs 2>/dev/null || true
+                sudo chmod -R 777 logs 2>/dev/null || true
+              fi
+              
+              # Fix other common problematic directories
+              echo "🔧 Fixing cert directory permissions..."
+              sudo mkdir -p cert 2>/dev/null || true
+              sudo chown -R $USER:$USER cert 2>/dev/null || true
+              sudo chmod -R 755 cert 2>/dev/null || true
+              
+              echo "🔧 Fixing db directory permissions..."
+              sudo mkdir -p db 2>/dev/null || true
+              sudo chown -R $USER:$USER db 2>/dev/null || true
+              sudo chmod -R 755 db 2>/dev/null || true
+              
+              echo "✅ Directory permissions fixed"
+            else
+              echo "⚠️ Deploy path $DEPLOY_PATH does not exist yet, skipping permission fixes"
+            fi
+          EOL
       - name: Fix Git Repository
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
