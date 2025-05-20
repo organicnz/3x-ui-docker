@@ -59,6 +59,7 @@ services:
     # Additional VPN ports - expose directly if necessary
     ports:
       - 54321:54321
+      - ${HTTPS_PORT}:2053
     volumes:
       # Mount the db directory for persistence
       - ./db:/etc/x-ui
