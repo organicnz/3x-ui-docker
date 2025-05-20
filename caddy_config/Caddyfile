@@ -1,7 +1,7 @@
 {
     # Global Caddy configuration
     email tamerlanium@gmail.com
-    
+
     # Default log configuration
     log {
         output file /data/logs/access.log {
@@ -12,15 +12,86 @@
     }
 }
 
-# Simple localhost configuration for testing
+# Service port-specific configuration for direct admin panel access - THIS WORKS
+service.foodshare.club:2053 {
+    # Use our custom self-signed certificate
+    tls /etc/caddy/tls/cert.pem /etc/caddy/tls/key.pem
+
+    # Direct pass-through to 3x-ui
+    reverse_proxy 3x-ui:2053 {
+        header_up X-Forwarded-Proto http
+        header_up X-Forwarded-Ssl off
+    }
+
+    log {
+        output file /data/logs/service_foodshare_club_2053.log {
+            roll_size 10MB
+            roll_keep 5
+            roll_keep_for 720h
+        }
+    }
+}
+
+# Configuration for service.foodshare.club on standard ports
+service.foodshare.club {
+    # Use our custom self-signed certificate
+    tls /etc/caddy/tls/cert.pem /etc/caddy/tls/key.pem
+
+    # Logs specific to this site
+    log {
+        output file /data/logs/service_foodshare_club.log {
+            roll_size 10MB
+            roll_keep 5
+            roll_keep_for 720h
+        }
+    }
+
+    # Handle 3x-ui admin panel
+    handle_path /BXv8SI7gBe/* {
+        # Remove the /BXv8SI7gBe prefix when forwarding
+        uri strip_prefix /BXv8SI7gBe
+
+        # Forward to the 3x-ui container
+        reverse_proxy 3x-ui:2053 {
+            # Fix protocol in headers
+            header_up X-Forwarded-Proto http
+            header_up X-Forwarded-Ssl off
+        }
+    }
+
+    # Handle asset paths specifically to ensure proper static content delivery
+    handle_path /BXv8SI7gBe/assets/* {
+        # Special handling for assets to ensure proper caching
+        header Cache-Control "public, max-age=86400"
+
+        # Forward to 3x-ui container
+        reverse_proxy 3x-ui:2053 {
+            header_up X-Forwarded-Proto http
+            header_up X-Forwarded-Ssl off
+        }
+    }
+
+    # Main VPN endpoints (ports 443, 80)
+    handle {
+        # Forward other traffic to 3x-ui for VPN functionality
+        reverse_proxy 3x-ui:443 {
+            transport http {
+                tls
+                tls_insecure_skip_verify
+            }
+        }
+    }
+}
+
+# Simple localhost configuration for local testing
 localhost:443 {
     tls internal
-    
+
     # Proxy the admin panel
     handle /BXv8SI7gBe/* {
         reverse_proxy 3x-ui:2053
     }
-    
+
     # Proxy everything else
     handle {
         reverse_proxy 3x-ui:443 {
@@ -30,7 +101,7 @@ localhost:443 {
             }
         }
     }
-    
+
     log {
         output file /data/logs/localhost.log
     }

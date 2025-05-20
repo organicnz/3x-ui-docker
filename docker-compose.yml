@@ -15,6 +15,7 @@ services:
     ports:
       - 80:80
       - 443:443
+      - 2053:2053  # Expose port 2053 for direct admin access
     volumes:
       - ./caddy_data:/data
       - ./caddy_config:/config
@@ -57,7 +58,6 @@ services:
     # Additional VPN ports - expose directly if necessary
     ports:
       - 54321:54321
-      - ${HTTPS_PORT}:2053
     volumes:
       # Mount the db directory for persistence
       - ./db:/etc/x-ui
