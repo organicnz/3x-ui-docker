@@ -13,8 +13,8 @@ services:
     container_name: caddy
     image: caddy:latest
     ports:
-      - "80:80"
-      - "443:443"
+      - 80:80
+      - 443:443
     volumes:
       - ./caddy_data:/data
       - ./caddy_config:/config
@@ -31,16 +31,16 @@ services:
       update_config:
         order: stop-first
     environment:
-      CADDY_INGRESS_NETWORKS: 'no-zero-trust-cloudflared,zero-trust-cloudflared,vpn-network'
-      ACME_AGREE: 'true'
-      CLOUDFLARE_EMAIL: ${CLOUDFLARE_EMAIL:-tamerlanium@gmail.com}
-      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-82bfe585b86d6463e10853233a20ce64fd13a}
+      CADDY_INGRESS_NETWORKS: no-zero-trust-cloudflared,zero-trust-cloudflared,vpn-network
+      ACME_AGREE: true
+      CLOUDFLARE_EMAIL: ${CLOUDFLARE_EMAIL:-admin@example.com}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-your_cloudflare_api_token}
       DOMAIN: ${DOMAIN:-foodshare.club}
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: 10m
+        max-file: 3
     depends_on:
       - 3x-ui
 

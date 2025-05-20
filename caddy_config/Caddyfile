@@ -75,12 +75,11 @@ service.foodshare.club {
     }
 }
 
-# Main domain - redirect to service subdomain
-foodshare.club {
-    redir https://service.foodshare.club{uri} permanent
-}
+# Comment out redirections
+# foodshare.club {
+#     redir https://service.foodshare.club{uri} permanent
+# }
 
-# Catch-all www domain
-www.foodshare.club {
-    redir https://service.foodshare.club{uri} permanent
-} 
+# www.foodshare.club {
+#     redir https://service.foodshare.club{uri} permanent
+# }
