@@ -1,0 +1,86 @@
+{
+    # Global Caddy configuration
+    email {$CLOUDFLARE_EMAIL}
+    acme_dns cloudflare {$CLOUDFLARE_API_TOKEN}
+    
+    # Default log configuration
+    log {
+        output file /data/logs/access.log {
+            roll_size 10MB
+            roll_keep 5
+            roll_keep_for 720h
+        }
+    }
+}
+
+# VPN Admin Panel Configuration
+service.foodshare.club {
+    # TLS configuration
+    tls {
+        dns cloudflare {$CLOUDFLARE_API_TOKEN}
+    }
+    
+    # Logs specific to this site
+    log {
+        output file /data/logs/service_foodshare_club.log {
+            roll_size 10MB
+            roll_keep 5
+            roll_keep_for 720h
+        }
+    }
+    
+    # Handle 3x-ui admin panel
+    handle_path /BXv8SI7gBe/* {
+        # Remove the /BXv8SI7gBe prefix when forwarding
+        uri strip_prefix /BXv8SI7gBe
+        
+        # Forward to the 3x-ui container
+        reverse_proxy 3x-ui:2053 {
+            # Fix protocol in headers to avoid HTTPS cert issues
+            header_up X-Forwarded-Proto http
+            header_up X-Forwarded-Ssl off
+            
+            # Handle websocket connections
+            transport http {
+                keepalive 0s
+            }
+            
+            # Replace HTTPS URLs with HTTP in responses
+            header_down -Permissions-Policy
+            header_down +Permissions-Policy "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=(), focus-without-user-activation=(), hid=(), idle-detection=(), serial=(), sync-script=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
+        }
+    }
+    
+    # Handle asset paths specifically
+    handle_path /BXv8SI7gBe/assets/* {
+        # Special handling for assets to ensure proper caching
+        header Cache-Control "public, max-age=86400"
+        
+        # Forward to 3x-ui container
+        reverse_proxy 3x-ui:2053 {
+            header_up X-Forwarded-Proto http
+            header_up X-Forwarded-Ssl off
+        }
+    }
+    
+    # Main VPN endpoints (ports 443, 80)
+    handle {
+        # Forward other traffic to 3x-ui for VPN functionality
+        reverse_proxy 3x-ui:443 {
+            transport http {
+                tls
+                tls_insecure_skip_verify
+            }
+        }
+    }
+}
+
+# Main domain - redirect to service subdomain
+foodshare.club {
+    redir https://service.foodshare.club{uri} permanent
+}
+
+# Catch-all www domain
+www.foodshare.club {
+    redir https://service.foodshare.club{uri} permanent
+} 

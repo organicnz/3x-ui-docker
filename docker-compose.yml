@@ -1,17 +1,62 @@
-# 3x-ui VPN Service configuration
+# 3x-ui VPN Service with Caddy Reverse Proxy
+x-deploy: &default-deploy
+  restart_policy:
+    condition: unless-stopped
+    delay: 5s
+    window: 120s
+  update_config:
+    order: start-first
+
 services:
+  # Caddy reverse proxy service
+  caddy:
+    container_name: caddy
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy_data:/data
+      - ./caddy_config:/config
+      - ./caddy_config/Caddyfile:/etc/caddy/Caddyfile
+      - ./tls:/etc/caddy/tls        
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - no-zero-trust-cloudflared
+      - zero-trust-cloudflared
+      - web
+      - vpn-network
+    deploy:
+      <<: *default-deploy
+      update_config:
+        order: stop-first
+    environment:
+      CADDY_INGRESS_NETWORKS: 'no-zero-trust-cloudflared,zero-trust-cloudflared,vpn-network'
+      ACME_AGREE: 'true'
+      CLOUDFLARE_EMAIL: ${CLOUDFLARE_EMAIL:-tamerlanium@gmail.com}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-82bfe585b86d6463e10853233a20ce64fd13a}
+      DOMAIN: ${DOMAIN:-foodshare.club}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      - 3x-ui
+
+  # 3x-ui VPN service
   3x-ui:
     image: ghcr.io/mhsanaei/3x-ui:latest
     container_name: 3x-ui
     restart: unless-stopped
+    # No need to expose ports directly - Caddy will handle external access
+    expose:
+      - 2053
+      - 443
+      - 80
+    # Additional VPN ports - expose directly if necessary
     ports:
-      # Admin panel port
-      - 2053:2053  # Admin panel
-      # Essential XRay protocol ports
-      - 443:443    # HTTPS/TLS
-      - 80:80      # HTTP
-      # Additional VPN protocol ports
-      - 54321:54321 # Fallback/additional port
+      - 54321:54321
     volumes:
       # Mount the db directory for persistence
       - ./db:/etc/x-ui
@@ -22,14 +67,14 @@ services:
     environment:
       - XRAY_VMESS_AEAD_FORCED=${XRAY_VMESS_AEAD_FORCED:-false}
       - PANEL_PATH=${PANEL_PATH:-BXv8SI7gBe}
-      # Force HTTP strictly for the admin panel
-      - BASE_URL=${VPN_DOMAIN:-service.foodshare.club}
+      # Configure for internal HTTP - Caddy handles HTTPS externally
+      - BASE_URL=service.foodshare.club
       - ASSETS_PATH=/BXv8SI7gBe/assets
-      # Key environment variables for HTTP handling
+      # Internal HTTP configuration
       - XUI_USE_HTTPS=false
-            - FORCE_HTTPS=false
+      - FORCE_HTTPS=false
       - URL_PROTOCOL=http
-      - DISABLE_TLS=true
+      - DISABLE_TLS=false
       - HTTP_PORT=2053
       - HTTPS_PORT=443
       - TLS_PORT=443
@@ -52,10 +97,34 @@ services:
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
     networks:
       - vpn-network
+    deploy:
+      <<: *default-deploy
 
 networks:
   vpn-network:
     driver: bridge
+  web:
+    external: true
+    name: web
+  no-zero-trust-cloudflared:
+    external: true
+    driver: bridge
+    name: no-zero-trust-cloudflared 
+  zero-trust-cloudflared:
+    external: true
+    driver: bridge
+    name: zero-trust-cloudflared 
+
+volumes:
+  caddy_data:
+    external: true
+  caddy:
+    external: true
+  caddy_config:  
+  tls:
+    external: true  
+  vault-data:
+    external: true
 
 # If you want to use named volumes instead of local bind mounts
 # volumes:
