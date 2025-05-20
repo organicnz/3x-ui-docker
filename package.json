@@ -13,6 +13,8 @@
     "logs:help": "bash ./scripts/workflow-logs.sh -h",
     "setup:secrets": "bash ./scripts/setup-github-secrets.sh",
     "setup:deploy-key": "bash ./scripts/setup_github_deploy_key.sh",
+    "setup:deploy-key:add": "bash ./scripts/setup_github_deploy_key.sh -a",
+    "setup:deploy-key:auto": "bash ./scripts/setup_github_deploy_key.sh -a -s -y",
     "backup": "bash ./scripts/backup.sh",
     "cert:check": "bash ./scripts/renew_certificates.sh",
     "security:check": "bash ./scripts/security_check.sh",

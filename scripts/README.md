@@ -116,10 +116,17 @@ Supported types:
 
 ### GitHub Deploy Key Setup (`setup_github_deploy_key.sh`)
 
-Generates and configures a properly formatted GitHub deploy key.
+Generates and configures a properly formatted GitHub deploy key with optional automated deployment.
 
 ```bash
+# Generate key only
 npm run setup:deploy-key
+
+# Generate key and add to GitHub repository
+npm run setup:deploy-key:add
+
+# Fully automated setup (generate key and add to GitHub)
+npm run setup:deploy-key:auto
 ```
 
 Features:
@@ -127,7 +134,15 @@ Features:
 - Provides step-by-step instructions for adding keys to GitHub
 - Automatically generates keys in the correct format for GitHub Actions
 - Helps solve "key comment doesn't match GitHub URL pattern" warnings
-- Recommends secure key management practices
+- Can automatically add keys to GitHub via API (requires personal access token)
+- Supports fully automated key deployment for CI/CD setups
+- Includes detailed help with `./scripts/setup_github_deploy_key.sh --help`
+
+Advanced usage:
+```bash
+# With direct options
+./scripts/setup_github_deploy_key.sh -t YOUR_GITHUB_TOKEN -a -s --title "Deployment Key" -y
+```
 
 ## Utility Functions
 
