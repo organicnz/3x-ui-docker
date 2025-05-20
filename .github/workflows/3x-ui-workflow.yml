@@ -583,9 +583,58 @@ jobs:
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             REPO_URL="https://github.com/${{ github.repository }}.git"
             
-            # Check if path exists but is inaccessible or empty
-            if [ -e "$DEPLOY_PATH" ] && ([ ! -r "$DEPLOY_PATH" ] || [ -z "$(ls -A "$DEPLOY_PATH" 2>/dev/null)" ]); then
-              echo "🔄 Directory exists but is inaccessible or empty. Recovering..."
+                          # Enhanced directory validation checks - handle more edge cases
+              DIRECTORY_VALID=false
+
+              # Check 1: Path exists physically
+            if [ -e "$DEPLOY_PATH" ]; then
+              echo "🔍 Deploy path physically exists"
+              
+              # Check 2: Path is accessible and readable
+              if [ -r "$DEPLOY_PATH" ]; then
+                echo "🔍 Deploy path is readable"
+                
+                # Check 3: Path is a directory
+                if [ -d "$DEPLOY_PATH" ]; then
+                  echo "🔍 Deploy path is a directory"
+                  
+                  # Check 4: Can successfully cd into directory
+                  if cd "$DEPLOY_PATH" 2>/dev/null; then
+                    echo "🔍 Successfully entered directory"
+                    
+                    # Check 5: Directory has files (not empty)
+                    if [ "$(ls -A 2>/dev/null)" ]; then
+                      echo "🔍 Directory has content"
+                      
+                      # Check 6: Directory has critical files
+                      if [ -f "docker-compose.yml" ]; then
+                        echo "✅ Directory is valid and contains docker-compose.yml"
+                        DIRECTORY_VALID=true
+                      else
+                        echo "❌ Missing critical file: docker-compose.yml"
+                      fi
+                    else
+                      echo "❌ Directory is empty"
+                    fi
+                    
+                    # Return to previous directory
+                    cd - > /dev/null
+                  else
+                    echo "❌ Cannot cd into directory - might be corrupted or permission issue"
+                  fi
+                else
+                  echo "❌ Path exists but is not a directory"
+                fi
+              else
+                echo "❌ Path exists but is not readable"
+              fi
+            else
+              echo "❌ Deploy path does not exist"
+            fi
+            
+            # Recovery action if directory is invalid
+            if [ "$DIRECTORY_VALID" = false ]; then
+              echo "🔄 Directory is invalid or corrupted. Performing recovery..."
               
               # Get parent directory
               PARENT_DIR=$(dirname "$DEPLOY_PATH")
@@ -594,37 +643,66 @@ jobs:
               # Create backup timestamp
               TIMESTAMP=$(date +%s)
               
-              cd "$PARENT_DIR"
+              # Navigate to parent directory
+              cd "$PARENT_DIR" || {
+                echo "⚠️ Cannot access parent directory. Creating it..."
+                mkdir -p "$PARENT_DIR"
+                cd "$PARENT_DIR"
+              }
               
-              # Handle cases where directory exists but is inaccessible
+              # Handle cases where directory exists but is problematic
               if [ -e "$DIR_NAME" ]; then
                 echo "🔄 Moving problematic directory..."
                 # Try normal move first, fall back to sudo if needed
-                mv "$DIR_NAME" "${DIR_NAME}_broken_${TIMESTAMP}" 2>/dev/null || sudo mv "$DIR_NAME" "${DIR_NAME}_broken_${TIMESTAMP}"
+                mv "$DIR_NAME" "${DIR_NAME}_broken_${TIMESTAMP}" 2>/dev/null || sudo mv "$DIR_NAME" "${DIR_NAME}_broken_${TIMESTAMP}" || {
+                  echo "⚠️ Failed to move directory. Attempting to forcefully remove it..."
+                  rm -rf "$DIR_NAME" 2>/dev/null || sudo rm -rf "$DIR_NAME" || {
+                    echo "⚠️ Could not remove directory. Creating with a different name..."
+                    DIR_NAME="${DIR_NAME}_new"
+                    DEPLOY_PATH="${PARENT_DIR}/${DIR_NAME}"
+                    echo "⚠️ Updated deploy path to: $DEPLOY_PATH"
+                  }
+                }
               fi
+              
+              # Ensure deploy directory doesn't exist before cloning
+              [ -e "$DIR_NAME" ] && {
+                echo "⚠️ Directory still exists! Final attempt to remove..."
+                sudo rm -rf "$DIR_NAME"
+              }
               
               # Clone fresh repository
               echo "🔄 Cloning fresh repository..."
               git clone "$REPO_URL" "$DIR_NAME" || {
-                # If clone fails, try with sudo
-                sudo git clone "$REPO_URL" "$DIR_NAME"
-                # Ensure permissions are correct
-                sudo chown -R $USER:$USER "$DIR_NAME"
+                # If clone fails, try with depth=1
+                echo "⚠️ Standard clone failed, trying shallow clone..."
+                git clone --depth=1 "$REPO_URL" "$DIR_NAME" || {
+                  # If that fails too, try with sudo
+                  echo "⚠️ Shallow clone failed, trying with elevated privileges..."
+                  sudo git clone --depth=1 "$REPO_URL" "$DIR_NAME"
+                  # Ensure permissions are correct
+                  sudo chown -R $USER:$USER "$DIR_NAME"
+                }
               }
               
               # Enter directory and ensure it's accessible
               cd "$DIR_NAME" || {
-                echo "⚠️ Failed to enter directory after recovery!"
+                echo "⚠️ Failed to enter directory after recovery! This is a critical error."
                 exit 1
               }
               
-              # Create essential directories
-              mkdir -p db cert logs caddy_data caddy_config tls
-              chmod -R 755 db cert logs caddy_data caddy_config tls
-              
-              echo "✅ Recovery completed successfully!"
+              # Verify directory is now valid
+              if [ -d "$(pwd)" ] && [ -n "$(ls -A 2>/dev/null)" ]; then
+                echo "✅ Recovery completed successfully!"
+                # Create essential directories
+                mkdir -p db cert logs caddy_data caddy_config tls
+                chmod -R 755 db cert logs caddy_data caddy_config tls
+              else
+                echo "❌ Recovery failed! Manual intervention required."
+                exit 1
+              fi
             else
-              echo "✅ Directory is accessible, proceeding normally."
+              echo "✅ Directory is valid, proceeding normally."
             fi
           EOL
       
