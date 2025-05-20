@@ -221,145 +221,65 @@ jobs:
             
             # Discard local changes
             echo -e "${YELLOW}Discarding any local changes...${NC}"
-            git reset --hard HEAD || true
-            git clean -fdx || true
-            
-            # Pull latest changes
-            echo -e "${BLUE}Pulling latest changes...${NC}"
-            git pull origin main || {
-              echo -e "${RED}Failed to pull. Trying with --allow-unrelated-histories...${NC}"
-              git pull origin main --allow-unrelated-histories || {
-                echo -e "${RED}Failed to pull even with --allow-unrelated-histories.${NC}"
-                echo -e "${YELLOW}Recreating repository from scratch...${NC}"
-                
-                # Backup existing data
-                cd ..
-                TIMESTAMP=$(date +%s)
-                BACKUP_DIR="/tmp/3x-ui-backup-$TIMESTAMP"
-                mkdir -p "$BACKUP_DIR"
-                
-                if [ -d "$DEPLOY_PATH/db" ]; then
-                  cp -r "$DEPLOY_PATH/db" "$BACKUP_DIR/"
-                fi
-                
-                if [ -d "$DEPLOY_PATH/cert" ]; then
-                  cp -r "$DEPLOY_PATH/cert" "$BACKUP_DIR/"
-                fi
-                
-                if [ -d "$DEPLOY_PATH/logs" ]; then
-                  cp -r "$DEPLOY_PATH/logs" "$BACKUP_DIR/"
-                fi
-                
-                if [ -f "$DEPLOY_PATH/.env" ]; then
-                  cp "$DEPLOY_PATH/.env" "$BACKUP_DIR/"
-                fi
-                
-                # Remove and clone fresh
-                mv "$DEPLOY_PATH" "${DEPLOY_PATH}_broken_$TIMESTAMP"
-                git clone "$REPO_URL" "$DEPLOY_PATH"
-                
-                # Restore data
-                cd "$DEPLOY_PATH"
-                
-                # Restore database files
-                if [ -d "$BACKUP_DIR/db" ]; then
-                  cp -r "$BACKUP_DIR/db/"* db/ 2>/dev/null || true
-                else
-                  mkdir -p db
-                fi
-                
-                # Restore certificate files
-                if [ -d "$BACKUP_DIR/cert" ]; then
-                  cp -r "$BACKUP_DIR/cert/"* cert/ 2>/dev/null || true
-                else
-                  mkdir -p cert
-                fi
-                
-                # Restore log files
-                if [ -d "$BACKUP_DIR/logs" ]; then
-                  cp -r "$BACKUP_DIR/logs/"* logs/ 2>/dev/null || true
-                else
-                  mkdir -p logs
-                fi
-                
-                # Restore .env file
-                if [ -f "$BACKUP_DIR/.env" ]; then
-                  cp "$BACKUP_DIR/.env" .env
-                fi
-                
-                echo -e "${GREEN}Repository recreated from scratch and data restored.${NC}"
-              }
-            }
-            
-            # Verify repository has files
-            echo -e "${BLUE}Verifying repository contents...${NC}"
-            FILE_COUNT=$(find . -type f -not -path "./.git/*" | wc -l)
-            
+            git reset --hard HEAD
+
+            # Validate repository
+            echo -e "${YELLOW}Validating repository...${NC}"
+            FILE_COUNT=$(find . -type f -not -path './.git/*' | wc -l)
             if [ "$FILE_COUNT" -lt 5 ]; then
-              echo -e "${RED}Repository has very few files ($FILE_COUNT). Something may be wrong.${NC}"
-              ls -la
+              echo -e "${RED}Repository appears empty or invalid ($FILE_COUNT files). Aborting.${NC}"
+              exit 1
             else
               echo -e "${GREEN}Repository has $FILE_COUNT files. Looks good!${NC}"
             fi
-            
-            # Check for docker-compose.yml
-            if [ -f "docker-compose.yml" ]; then
+
+            if [ -f docker-compose.yml ]; then
               echo -e "${GREEN}docker-compose.yml exists. Repository appears to be valid.${NC}"
             else
-              echo -e "${RED}docker-compose.yml is missing! Repository may be incomplete.${NC}"
-              
-              # Try again with a clean clone
-              echo -e "${YELLOW}Attempting a clean clone...${NC}"
-              cd ..
-              TIMESTAMP=$(date +%s)
-              mv "$DEPLOY_PATH" "${DEPLOY_PATH}_incomplete_$TIMESTAMP"
-              git clone "$REPO_URL" "$DEPLOY_PATH"
-              
-              cd "$DEPLOY_PATH"
-              if [ -f "docker-compose.yml" ]; then
-                echo -e "${GREEN}Clean clone successful! docker-compose.yml now exists.${NC}"
-                
-                # Restore data from previous attempt
-                OLD_PATH="${DEPLOY_PATH}_incomplete_$TIMESTAMP"
-                
-                mkdir -p db cert logs
-                
-                # Copy data from previous attempt
-                if [ -d "$OLD_PATH/db" ]; then
-                  cp -r "$OLD_PATH/db/"* db/ 2>/dev/null || true
-                fi
-                
-                if [ -d "$OLD_PATH/cert" ]; then
-                  cp -r "$OLD_PATH/cert/"* cert/ 2>/dev/null || true
-                fi
-                
-                if [ -d "$OLD_PATH/logs" ]; then
-                  cp -r "$OLD_PATH/logs/"* logs/ 2>/dev/null || true
-                fi
-                
-                if [ -f "$OLD_PATH/.env" ]; then
-                  cp "$OLD_PATH/.env" .env
-                fi
-              else
-                echo -e "${RED}Clean clone also failed. Manual intervention may be required.${NC}"
-                exit 1
-              fi
+              echo -e "${RED}docker-compose.yml does not exist. Aborting.${NC}"
+              exit 1
             fi
-            
-            # Ensure required directories exist
+
             echo -e "${YELLOW}Ensuring required directories exist...${NC}"
-            mkdir -p db cert logs cert/service.foodshare.club
-            
-            # Set proper permissions
+            mkdir -p db cert logs cert/${{ secrets.VPN_DOMAIN }}
+
             echo -e "${YELLOW}Setting proper permissions...${NC}"
-            chmod -R 755 .
-            chmod -R 777 logs
-            if [ -f "db/x-ui.db" ]; then
-              chmod 644 db/x-ui.db
-            else
-              touch db/x-ui.db
-              chmod 644 db/x-ui.db
-            fi
+            # Use selective permissions approach to avoid permission issues with caddy_data/logs
+            find . -type d -not -path "./.git/*" -not -path "./caddy_data/logs*" -not -path "./caddy_data/caddy/*" -not -path "./.history/*" -print0 | xargs -0 -I{} chmod 755 "{}" 2>/dev/null || true
+            find . -type f -not -path "./.git/*" -not -path "./caddy_data/logs*" -not -path "./caddy_data/caddy/*" -not -path "./.history/*" -print0 | xargs -0 -I{} chmod 644 "{}" 2>/dev/null || true
+            # Special permissions for logs directory
+            chmod -R 777 logs 2>/dev/null || true
+            # Make scripts executable
+            find ./scripts -type f -name "*.sh" -print0 | xargs -0 -I{} chmod +x "{}" 2>/dev/null || true
+            chmod +x *.sh 2>/dev/null || true
+            # Ensure .env file exists
+            echo -e "${YELLOW}Setting up environment variables...${NC}"
+            echo "# 3x-ui VPN Service Configuration" > .env
+            echo "# Generated by CI/CD on $(date)" >> .env
+            echo "" >> .env
+            echo "# Panel Path - The secure path for accessing the admin panel" >> .env
+            echo "PANEL_PATH=${{ secrets.PANEL_PATH }}" >> .env
+            echo "" >> .env
+            echo "# HTTPS Port - Port for accessing the admin interface" >> .env
+            echo "HTTPS_PORT=${{ secrets.HTTPS_PORT }}" >> .env
+            echo "" >> .env
+            echo "# VPN Domain - The domain name for your VPN service" >> .env
+            echo "VPN_DOMAIN=${{ secrets.VPN_DOMAIN }}" >> .env
+            echo "" >> .env
+            echo "# Admin Email - Email address for certificate notifications" >> .env
+            echo "ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}" >> .env
+            echo "" >> .env
+            echo "# XRay Configuration" >> .env
+            echo "XRAY_VMESS_AEAD_FORCED=${{ secrets.XRAY_VMESS_AEAD_FORCED }}" >> .env
+            echo "" >> .env
+            echo "# Admin Credentials" >> .env
+            echo "XUI_USERNAME=${{ secrets.XUI_USERNAME }}" >> .env
+            echo "XUI_PASSWORD=${{ secrets.XUI_PASSWORD }}" >> .env
+            echo "" >> .env
+            echo "# JWT Secret - Used for authentication" >> .env
+            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+            chmod 600 .env
+            echo "✅ Basic .env file created with GitHub secrets"
             
             echo -e "${GREEN}Git repository is now fixed and ready for deployment!${NC}"
             echo -e "${BLUE}Repository information:${NC}"
