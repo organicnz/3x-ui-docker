@@ -572,7 +572,63 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-      - name: Deploy from Gi
+      
+      # Add recovery step for inaccessible directory
+      - name: Recover from inaccessible directory
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
+            set -ex  # Enable verbose logging and exit on errors
+            
+            # Define variables
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+            
+            # Check if path exists but is inaccessible or empty
+            if [ -e "$DEPLOY_PATH" ] && ([ ! -r "$DEPLOY_PATH" ] || [ -z "$(ls -A "$DEPLOY_PATH" 2>/dev/null)" ]); then
+              echo "🔄 Directory exists but is inaccessible or empty. Recovering..."
+              
+              # Get parent directory
+              PARENT_DIR=$(dirname "$DEPLOY_PATH")
+              DIR_NAME=$(basename "$DEPLOY_PATH")
+              
+              # Create backup timestamp
+              TIMESTAMP=$(date +%s)
+              
+              cd "$PARENT_DIR"
+              
+              # Handle cases where directory exists but is inaccessible
+              if [ -e "$DIR_NAME" ]; then
+                echo "🔄 Moving problematic directory..."
+                # Try normal move first, fall back to sudo if needed
+                mv "$DIR_NAME" "${DIR_NAME}_broken_${TIMESTAMP}" 2>/dev/null || sudo mv "$DIR_NAME" "${DIR_NAME}_broken_${TIMESTAMP}"
+              fi
+              
+              # Clone fresh repository
+              echo "🔄 Cloning fresh repository..."
+              git clone "$REPO_URL" "$DIR_NAME" || {
+                # If clone fails, try with sudo
+                sudo git clone "$REPO_URL" "$DIR_NAME"
+                # Ensure permissions are correct
+                sudo chown -R $USER:$USER "$DIR_NAME"
+              }
+              
+              # Enter directory and ensure it's accessible
+              cd "$DIR_NAME" || {
+                echo "⚠️ Failed to enter directory after recovery!"
+                exit 1
+              }
+              
+              # Create essential directories
+              mkdir -p db cert logs caddy_data caddy_config tls
+              chmod -R 755 db cert logs caddy_data caddy_config tls
+              
+              echo "✅ Recovery completed successfully!"
+            else
+              echo "✅ Directory is accessible, proceeding normally."
+            fi
+          EOL
+      
+      - name: Deploy from Git
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOL'
             set -ex  # Enable verbose logging and exit on error
