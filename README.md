@@ -361,6 +361,49 @@ This tool allows you to:
 - SSH to the VPN server
 - Check server status
 
+### Security and Maintenance Scripts
+
+We've added new scripts to enhance security and maintenance:
+
+#### Security Check and Hardening
+```bash
+npm run security:check   # Check security configuration
+npm run security:fix     # Apply security fixes and restart service
+```
+
+This script performs a comprehensive security audit of your 3x-ui deployment, including:
+- Docker Compose security configuration
+- Environment variable verification
+- Certificate security assessment
+- Database & file permission hardening
+- XRay configuration security
+
+#### Certificate Management
+```bash
+npm run cert:check
+```
+
+This script automatically validates and manages SSL certificates:
+- Certificate expiration monitoring
+- Self-signed certificate generation if needed
+- Certificate and private key verification
+- Proper permission enforcement
+
+#### Automated Backup
+```bash
+npm run backup
+```
+
+Performs a complete backup of your 3x-ui VPN configuration and data:
+- SQLite database backup
+- Certificate backup
+- Configuration file backup
+- Consolidated full backup archive
+- Backup integrity verification
+- Automatic retention management (7-day default)
+
+For more details, see the [Scripts README](scripts/README.md).
+
 ### Individual Scripts
 
 If you prefer to use individual scripts:

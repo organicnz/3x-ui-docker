@@ -11,7 +11,11 @@
     "logs:all": "bash ./scripts/workflow-logs.sh -a",
     "logs:github": "bash ./scripts/workflow-logs.sh -g",
     "logs:help": "bash ./scripts/workflow-logs.sh -h",
-    "setup:secrets": "bash ./scripts/setup-github-secrets.sh"
+    "setup:secrets": "bash ./scripts/setup-github-secrets.sh",
+    "backup": "bash ./scripts/backup.sh",
+    "cert:check": "bash ./scripts/renew_certificates.sh",
+    "security:check": "bash ./scripts/security_check.sh",
+    "security:fix": "bash ./scripts/security_check.sh && docker-compose restart 3x-ui"
   },
   "repository": {
     "type": "git",

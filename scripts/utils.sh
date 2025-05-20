@@ -1,14 +1,198 @@
 #!/bin/bash
 
-# Utility functions for 3x-ui VPN admin scripts
+# Utility functions for 3x-ui VPN Service scripts
+# This file contains common functions used across various scripts
 
-# Colors for output
-export GREEN='\033[0;32m'
-export YELLOW='\033[1;33m'
-export RED='\033[0;31m'
-export BLUE='\033[0;34m'
-export CYAN='\033[0;36m'
-export NC='\033[0m' # No Color
+# Colors for better readability
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Log a regular message
+log_message() {
+  local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  echo -e "${BLUE}[${timestamp}]${NC} $1"
+}
+
+# Log a success message
+log_success() {
+  local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  echo -e "${GREEN}[${timestamp}]${NC} $1"
+}
+
+# Log a warning message
+log_warning() {
+  local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  echo -e "${YELLOW}[${timestamp}]${NC} $1"
+}
+
+# Log an error message
+log_error() {
+  local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  echo -e "${RED}[${timestamp}]${NC} $1"
+}
+
+# Check if running as root
+check_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    log_warning "This script is not running as root."
+    log_warning "Some operations may fail due to insufficient permissions."
+    return 1
+  fi
+  return 0
+}
+
+# Check if a command exists
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+# Check if a file exists
+file_exists() {
+  [ -f "$1" ]
+}
+
+# Check if a directory exists
+dir_exists() {
+  [ -d "$1" ]
+}
+
+# Check if a service is running
+service_running() {
+  if command_exists systemctl; then
+    systemctl is-active --quiet "$1"
+    return $?
+  elif command_exists service; then
+    service "$1" status >/dev/null 2>&1
+    return $?
+  else
+    log_error "Cannot check service status: neither systemctl nor service command found"
+    return 2
+  fi
+}
+
+# Execute a command and log output
+exec_cmd() {
+  local cmd="$1"
+  local cmd_name="${2:-Command}"
+  
+  log_message "Executing: $cmd"
+  
+  # Execute the command and capture output
+  output=$(eval "$cmd" 2>&1)
+  exit_code=$?
+  
+  if [ $exit_code -eq 0 ]; then
+    log_success "$cmd_name completed successfully"
+    [ -n "$output" ] && echo "$output"
+    return 0
+  else
+    log_error "$cmd_name failed with exit code $exit_code"
+    [ -n "$output" ] && echo "$output"
+    return $exit_code
+  fi
+}
+
+# Create a backup of a file before modifying it
+backup_file() {
+  local file="$1"
+  local backup="${file}.bak_$(date +%Y%m%d_%H%M%S)"
+  
+  if [ ! -f "$file" ]; then
+    log_error "Cannot backup $file: file does not exist"
+    return 1
+  fi
+  
+  cp "$file" "$backup"
+  if [ $? -eq 0 ]; then
+    log_success "Created backup of $file at $backup"
+    return 0
+  else
+    log_error "Failed to create backup of $file"
+    return 1
+  fi
+}
+
+# Print section header
+print_section() {
+  local section_name="$1"
+  local line=$(printf "%0.s=" $(seq 1 ${#section_name}))
+  echo ""
+  echo -e "${CYAN}${section_name}${NC}"
+  echo -e "${CYAN}${line}${NC}"
+}
+
+# Confirmation prompt
+confirm() {
+  local prompt="${1:-Are you sure?}"
+  local default="${2:-Y}"
+  
+  local options="Y/n"
+  if [ "$default" = "N" ] || [ "$default" = "n" ]; then
+    options="y/N"
+  fi
+  
+  read -p "$prompt [$options]: " answer
+  answer=${answer:-$default}
+  
+  if [[ $answer =~ ^[Yy]$ ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Get human-readable file size
+get_file_size() {
+  local file="$1"
+  
+  if [ ! -f "$file" ]; then
+    echo "0B"
+    return 1
+  fi
+  
+  # Get file size in bytes
+  local size=$(stat -f "%z" "$file" 2>/dev/null || stat -c "%s" "$file" 2>/dev/null)
+  
+  # Convert to human-readable format
+  if [ $size -lt 1024 ]; then
+    echo "${size}B"
+  elif [ $size -lt $((1024*1024)) ]; then
+    echo "$((size/1024))KB"
+  elif [ $size -lt $((1024*1024*1024)) ]; then
+    echo "$((size/(1024*1024)))MB"
+  else
+    echo "$((size/(1024*1024*1024)))GB"
+  fi
+}
+
+# Wait for a service to be available
+wait_for_service() {
+  local host="$1"
+  local port="$2"
+  local timeout="${3:-60}"
+  local message="${4:-Waiting for service at $host:$port...}"
+  
+  log_message "$message"
+  
+  local start_time=$(date +%s)
+  local end_time=$((start_time + timeout))
+  
+  while [ $(date +%s) -lt $end_time ]; do
+    if nc -z "$host" "$port" >/dev/null 2>&1; then
+      log_success "Service at $host:$port is available"
+      return 0
+    fi
+    sleep 1
+  done
+  
+  log_error "Service at $host:$port is not available after ${timeout}s timeout"
+  return 1
+}
 
 # Always require .env for environment variables
 # If .env or any required variable is missing, exit with error

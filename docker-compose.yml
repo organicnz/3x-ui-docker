@@ -26,12 +26,14 @@ services:
       - zero-trust-cloudflared
       - web
       - vpn-network
+      - audiobookshelf_bridge
+      # Add other networks as needed for additional services
     deploy:
       <<: *default-deploy
       update_config:
         order: stop-first
     environment:
-      CADDY_INGRESS_NETWORKS: no-zero-trust-cloudflared,zero-trust-cloudflared,vpn-network
+      CADDY_INGRESS_NETWORKS: no-zero-trust-cloudflared,zero-trust-cloudflared,vpn-network,audiobookshelf_bridge
       ACME_AGREE: true
       CLOUDFLARE_EMAIL: ${CLOUDFLARE_EMAIL:-admin@example.com}
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-your_cloudflare_api_token}
@@ -114,6 +116,9 @@ networks:
     external: true
     driver: bridge
     name: zero-trust-cloudflared 
+  audiobookshelf_bridge:
+    external: true
+    name: audiobookshelf_bridge
 
 volumes:
   caddy_data:
