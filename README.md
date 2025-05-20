@@ -506,3 +506,87 @@ docker-compose up -d
 ```
 
 Access the admin panel at http://localhost:2053/BXv8SI7gBe/ (replace with your configured values).
+
+## Quick Start
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/your-username/3x-ui-vpn.git
+   cd 3x-ui-vpn
+   ```
+
+2. Add the domain to your hosts file:
+   ```bash
+   sudo ./update_hosts.sh
+   ```
+
+3. Start the service:
+   ```bash
+   docker-compose up -d
+   ```
+
+4. Access the admin panel at: http://service.foodshare.club:2053/BXv8SI7gBe/
+   - Default credentials: admin/admin (unless changed in the environment)
+
+## Troubleshooting SSL Certificate Issues
+
+If you're experiencing certificate validation errors with the admin panel:
+
+### Option 1: Access via HTTP
+
+The easiest solution is to access the admin panel via HTTP instead of HTTPS:
+- Use http://service.foodshare.club:2053/BXv8SI7gBe/ (note the `http://` protocol)
+
+### Option 2: Bypass SSL Warnings (For Testing Only)
+
+We've included a script to launch Chrome with certificate warnings disabled:
+```bash
+./bypass_ssl_warning.sh
+```
+
+⚠️ **WARNING**: This is only for local testing and development. It disables security features in Chrome.
+
+### Option 3: Install Self-Signed Certificate
+
+For a more permanent solution, you can add the self-signed certificate to your trusted certificates store.
+
+#### MacOS:
+1. Open the Keychain Access app
+2. Import `cert/service.foodshare.club/fullchain.pem`
+3. Find the imported certificate in your keychain
+4. Double-click on it, expand the "Trust" section
+5. Set "When using this certificate" to "Always Trust"
+
+#### Windows:
+1. Double-click on `cert/service.foodshare.club/fullchain.pem`
+2. Install the certificate to the "Trusted Root Certification Authorities" store
+
+#### Linux:
+```bash
+sudo cp cert/service.foodshare.club/fullchain.pem /usr/local/share/ca-certificates/service.foodshare.club.crt
+sudo update-ca-certificates
+```
+
+## Environment Variables
+
+Edit `.env` to configure the service:
+
+```
+VPN_DOMAIN=service.foodshare.club
+PANEL_PATH=BXv8SI7gBe
+XUI_USERNAME=admin
+XUI_PASSWORD=admin
+JWT_SECRET=change_me_in_production
+XRAY_VMESS_AEAD_FORCED=false
+ADMIN_EMAIL=admin@example.com
+```
+
+## For Production Use
+
+For production deployment:
+
+1. Replace self-signed certificates with valid ones (Let's Encrypt)
+2. Change the default admin credentials
+3. Update JWT_SECRET to a strong random string
+4. Configure proper firewall rules
+5. Set up monitoring and alerting

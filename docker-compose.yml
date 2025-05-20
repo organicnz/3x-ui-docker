@@ -22,12 +22,13 @@ services:
     environment:
       - XRAY_VMESS_AEAD_FORCED=${XRAY_VMESS_AEAD_FORCED:-false}
       - PANEL_PATH=${PANEL_PATH:-BXv8SI7gBe}
-      # Asset configuration for correct URL rendering
-      - BASE_URL=${VPN_DOMAIN:-service.foodshare.club}
+      # Force HTTP for all assets and disable HTTPS completely
+      - BASE_URL=http://${VPN_DOMAIN:-service.foodshare.club}
       - ASSETS_PATH=/BXv8SI7gBe/assets
       - XUI_USE_HTTPS=false
       - FORCE_HTTPS=false
       - URL_PROTOCOL=http
+      - DISABLE_TLS=true
       - SKIP_PORT_IN_URL=true
       - ASSETS_OVERRIDE=true
       - NODE_ENV=production
